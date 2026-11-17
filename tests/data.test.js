@@ -2,7 +2,7 @@
 // data (tools/build_data.py) produces something the game cannot use.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { createPuzzle, isDateKey, letterMask } from '../site/js/core.js';
 
 const data = new URL('../site/data/', import.meta.url);
@@ -70,4 +70,21 @@ test('definitions: almost every word has one, in the right shard', () => {
     }
   }
   assert.ok(defined / words.length > 0.97, `only ${defined} of ${words.length} words are defined`);
+});
+
+test('pictures: every bundled entry belongs to a dictionary word', { skip: !existsSync(new URL('pics/', data)) }, () => {
+  const known = new Set(words);
+  let count = 0;
+  for (const file of readdirSync(new URL('pics/', data))) {
+    const shard = JSON.parse(readFileSync(new URL(`pics/${file}`, data), 'utf8'));
+    for (const [word, row] of Object.entries(shard)) {
+      assert.equal(word[0], file[0], `${word} is in ${file}`);
+      assert.ok(known.has(word), `${word} has a picture but is not in the dictionary`);
+      assert.equal(row.length, 4, word);
+      const [title, src, description, imageFile] = row;
+      assert.ok(title && src && typeof description === 'string' && typeof imageFile === 'string', word);
+      count += 1;
+    }
+  }
+  assert.ok(count > 1000, `only ${count} pictures`);
 });

@@ -1,11 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { choosePicture, describesNamedEntity, parseWiktionary, plainText } from '../site/js/lookup.js';
+import {
+  THUMB_PREFIX, THUMB_SUFFIX, choosePicture, describesNamedEntity, packPicture, parseWiktionary, plainText,
+  unpackPicture,
+} from '../site/js/lookup.js';
 
 const page = (title, extra = {}) => ({
   pageid: title.length * 1000 + title.charCodeAt(0),
   title,
-  thumbnail: { source: `https://upload.wikimedia.org/${title}.jpg`, width: 500, height: 375 },
+  thumbnail: { source: `${THUMB_PREFIX}commons/thumb/a/ab/${title}.jpg/500px-${title}.jpg${THUMB_SUFFIX}`, width: 500, height: 375 },
   pageimage: `${title}.jpg`,
   ...extra,
 });
@@ -57,11 +60,15 @@ test('describesNamedEntity spots places, people, works and businesses', () => {
   ]) assert.equal(describesNamedEntity(text), false, String(text));
 });
 
-test('choosePicture: a word with no category uses its own article', () => {
+test('choosePicture: the word\'s own article comes first', () => {
   const picture = choosePicture({ word: 'yellow' }, exact([page('Yellow', { description: 'Color' })]), null);
   assert.equal(picture.title, 'Yellow');
   assert.equal(picture.pageUrl, 'https://en.wikipedia.org/wiki/Yellow');
   assert.equal(picture.fileUrl, 'https://commons.wikimedia.org/wiki/File:Yellow.jpg');
+
+  const piano = exact([page('Piano', { description: 'Keyboard instrument' })], { normalized: [{ from: 'piano', to: 'Piano' }] });
+  const hits = search([page('Keyboard instrument'), page('Player piano')]);
+  assert.equal(choosePicture({ word: 'piano', kind: 'keyboard instrument' }, piano, hits).title, 'Piano');
 });
 
 test('choosePicture: no picture for disambiguation, missing or image-less pages', () => {
@@ -84,25 +91,67 @@ test('choosePicture: follows normalisation and redirects, and falls back to the 
   assert.equal(choosePicture({ word: 'geese', lemma: 'goose' }, data, null).title, 'Goose');
 });
 
-test('choosePicture: the category search steers an ambiguous word to the right sense', () => {
+// The search fixtures below are trimmed copies of real API results.
+
+test('choosePicture: an ambiguous word takes the article titled for its sense', () => {
+  const table = exact([page('Table', { pageprops: { disambiguation: '' } })], { normalized: [{ from: 'table', to: 'Table' }] });
+  const hits = search([
+    page('Garden furniture', { description: 'Furniture designed for outdoor use' }),
+    page('Dressing table', { description: 'Furniture for personal grooming' }),
+    page('Table (furniture)', { description: 'Piece of furniture with a flat top' }),
+  ]);
+  assert.equal(choosePicture({ word: 'table', kind: 'furniture' }, table, hits).title, 'Table (furniture)');
+});
+
+test('choosePicture: next best is an article with the word as its head noun', () => {
   const turkey = exact([page('Turkey', { description: 'Country in West Asia and Southeast Europe' })],
     { normalized: [{ from: 'turkey', to: 'Turkey' }] });
   const hits = search([
-    page('Domestic turkey', { description: 'Domesticated form of the wild turkey' }),
     page('Fowl', { description: 'Birds of the superorder Galloanserae' }),
+    page('National Thanksgiving Turkey Presentation', { description: 'Feast ritual held in the United States' }),
+    page('Domestic turkey', { description: 'Species of bird' }),
   ]);
   assert.equal(choosePicture({ word: 'turkey', kind: 'domestic fowl' }, turkey, hits).title, 'Domestic turkey');
 });
 
-test('choosePicture: keeps the obvious article when the search agrees', () => {
-  const piano = page('Piano', { description: 'Keyboard instrument' });
-  const data = exact([piano], { normalized: [{ from: 'piano', to: 'Piano' }] });
-  const hits = search([page('Keyboard instrument'), piano]);
-  assert.equal(choosePicture({ word: 'piano', kind: 'keyboard instrument' }, data, hits).title, 'Piano');
+test('choosePicture: then an article the definition names', () => {
+  const mint = exact([page('Mint', { pageprops: { disambiguation: '' } })], { normalized: [{ from: 'mint', to: 'Mint' }] });
+  const hits = search([
+    page('Herb', { description: 'Plant used for food, medicine or perfume' }),
+    page('Mentha', { description: 'Genus of flowering plants' }),
+    page('Maghrebi mint tea', { description: 'North African green tea' }),
+  ]);
+  const target = { word: 'mint', kind: 'herb', definition: 'any north temperate plant of the genus Mentha with aromatic leaves' };
+  assert.equal(choosePicture(target, mint, hits).title, 'Mentha');
+  // Without that clue there is nothing trustworthy: better no picture than mint tea.
+  assert.equal(choosePicture({ word: 'mint', kind: 'herb' }, mint, hits), null);
 });
 
-test('choosePicture: takes the top search hit when nothing carries the word', () => {
-  const mint = exact([page('Mint', { pageprops: { disambiguation: '' } })], { normalized: [{ from: 'mint', to: 'Mint' }] });
-  const hits = search([page('Mentha', { description: 'Genus of flowering plants' }), page('Herb')]);
-  assert.equal(choosePicture({ word: 'mint', kind: 'herb' }, mint, hits).title, 'Mentha');
+test('choosePicture: last, an article that starts with the word', () => {
+  const capital = exact([page('Capital', { pageprops: { disambiguation: '' } })], { normalized: [{ from: 'capital', to: 'Capital' }] });
+  const hits = search([
+    page('Australian Capital Territory', { description: 'Internal territory of Australia' }),
+    page('Capital city', { description: 'Seat of government of a country or subnational division' }),
+  ]);
+  assert.equal(choosePicture({ word: 'capital', kind: 'seat' }, capital, hits).title, 'Capital city');
+});
+
+test('choosePicture: dated events and works are never used', () => {
+  const pact = exact([{ title: 'Pact', missing: true }]);
+  const hits = search([
+    page('Tripartite Pact', { description: '1940 World War II mutual defense treaty' }),
+    page('Nazareno Pact', { description: '2014–2015 political agreement in Italy' }),
+  ]);
+  assert.equal(choosePicture({ word: 'pact', kind: 'written agreement' }, pact, hits), null);
+});
+
+test('pictures survive the round trip through the compact bundled form', () => {
+  const picture = choosePicture({ word: 'goose' }, exact([page('Goose', { description: 'Common name for many waterfowl', pageimage: 'Anser anser (cropped).jpg' })]), null);
+  const row = packPicture(picture);
+  assert.deepEqual(row, ['Goose', 'commons/thumb/a/ab/Goose.jpg/500px-Goose.jpg', 'Common name for many waterfowl', 'Anser anser (cropped).jpg']);
+  assert.deepEqual(unpackPicture(row), { ...picture, bundled: true });
+
+  // An address that does not follow the usual pattern is stored whole.
+  const odd = { ...picture, src: 'https://upload.wikimedia.org/wikipedia/commons/a/ab/Small.png' };
+  assert.equal(unpackPicture(packPicture(odd)).src, odd.src);
 });

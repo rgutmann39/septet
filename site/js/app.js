@@ -630,16 +630,22 @@ async function openCard(word, anchor) {
   }
   positionCard();
 
+  const show = (picture, retry) => {
+    if (request !== cardRequest) return;
+    if (!picture) {
+      setFigure('none');
+      return;
+    }
+    const image = $('card-image');
+    image.onload = () => request === cardRequest && setFigure('ready', picture);
+    // A bundled picture can go stale (renamed or deleted file): look again, live.
+    image.onerror = () => (retry
+      ? lookupPicture(word, definition, { live: true }).then((fresh) => show(fresh, false))
+      : show(null));
+    image.src = picture.src;
+  };
   const picture = await lookupPicture(word, definition);
-  if (request !== cardRequest) return;
-  if (!picture) {
-    setFigure('none');
-    return;
-  }
-  const image = $('card-image');
-  image.onload = () => request === cardRequest && setFigure('ready', picture);
-  image.onerror = () => request === cardRequest && setFigure('none');
-  image.src = picture.src;
+  show(picture, Boolean(picture?.bundled));
 }
 
 // ----------------------------------------------------------------- events --

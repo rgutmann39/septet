@@ -10,6 +10,7 @@
 accept: receive willingly something given or offered
 active: disposed to take action
 agent: a representative who acts on behalf of other persons
+alpaca: domesticated llama
 annual: occurring or payable every year
 apply: ask (for something)
 award: a tangible symbol signifying approval
@@ -50,6 +51,7 @@ mobile: moving or capable of moving readily
 mole: burrowing mammal
 online: connected to a computer network
 option: one of a number of things from which only one can be chosen
+papaya: melon-like tropical fruit
 partner: an associate in an activity
 plant: a living organism lacking the power of locomotion
 price: the amount of money needed to purchase something

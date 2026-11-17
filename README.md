@@ -42,10 +42,11 @@ module scripts and `fetch` on `file://`.
 ## How it works
 
 ```
-tools/build_data.py  ──►  site/data/words.txt        accepted dictionary (17k words)
-   (run by hand,           site/data/puzzles.json     schedule: 1,785 puzzles, ~5 years
-    output committed)      site/data/defs/a..z.json   one definition per word
-                           site/data/meta.json        build summary
+tools/build_data.py      ──►  site/data/words.txt        accepted dictionary (17k words)
+   (run by hand,               site/data/puzzles.json     schedule: 1,785 puzzles, ~5 years
+    output committed)          site/data/defs/a..z.json   one definition per word
+                               site/data/meta.json        build summary
+tools/build_pictures.mjs ──►  site/data/pics/a..z.json   optional picture index (not included)
 
 site/index.html + css/ + js/     the game; loads the data files with fetch()
    js/core.js      rules: scoring, validation, ranks, hints, schedule
@@ -101,26 +102,52 @@ asks Wiktionary. Every card links to the full Merriam-Webster entry.
 
 ### Pictures
 
-Pictures come from Wikipedia's public API, called directly from the browser
-(free, no key). For each word the game asks for the lead image of the article
-with that title, and for nouns it also searches for the word plus its
-category from WordNet ("mole insectivore") so that an ambiguous word gets the
-picture that matches the definition shown. Disambiguation pages, and articles
-about a place, person, film or company that happens to share the word, are
-skipped. Abstract words often have no good picture; the card says so rather
-than show a wrong one. Each picture links to its article and to its file
-page, which carries the author and licence.
+Pictures are the lead images of Wikipedia articles, looked up from the
+browser through Wikipedia's public API (free, no key) when a card opens.
+
+- **The word's own article first.** One request for the article titled with
+  the word. It is used unless it is a disambiguation page, or a place,
+  person, film or company that happens to share the word ("Turkey" the
+  country, "Nice" the city).
+- **A category search for ambiguous nouns.** When that fails, the word is
+  searched together with its category from WordNet ("mole insectivore") and
+  the game takes the article titled for that sense: "Table (furniture)",
+  "Turkey (bird)".
+- **No picture beats a wrong picture.** Abstract words often have nothing
+  suitable, and the card says so.
+
+Each picture links to its article and to its file page, which carries the
+author and licence.
+
+Wikipedia limits how many requests an address may make. A person tapping
+words is far below that, but if a lookup is refused the card simply shows no
+picture, and the next tap tries again.
+
+**Optional picture index.** `tools/build_pictures.mjs` can do the first step
+ahead of time for the whole dictionary and write `site/data/pics/`, so most
+pictures need no lookup at all. The index is not included in this
+repository: it takes about 350 requests, and it has to be run from a network
+that is within Wikipedia's
+[rate limits](https://www.mediawiki.org/wiki/Wikimedia_APIs/Rate_limits),
+identifying whoever runs it. The game works the same with or without it.
 
 ## Rebuilding the data
 
 ```sh
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r tools/requirements.txt
-python tools/build_data.py            # add --report for tuning detail
+python tools/build_data.py            # dictionary, puzzles, definitions
 npm test                              # checks the new files
+
+# optional: picture index (see "Pictures" above)
+SEPTET_CONTACT=<your URL or email> node tools/build_pictures.mjs
 ```
 
-Sources are downloaded once into `tools/.cache/` and verified by checksum.
+`build_data.py --report` prints extra detail for tuning the word list. Its
+sources are downloaded once into `tools/.cache/` and verified by checksum.
+`build_pictures.mjs` caches each batch, makes one request at a time, and
+stops as soon as Wikipedia asks it to slow down; run it again later to
+resume.
 The puzzle order comes from a fixed seed, so a rebuild with the same inputs
 gives the same schedule. Changing the dictionary can change which puzzle
 falls on which date.

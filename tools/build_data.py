@@ -93,6 +93,11 @@ SCHEDULE_SEED = 20261101
 SCHEDULE_EPOCH = "2026-11-01"
 
 POS_NAMES = {"n": "noun", "v": "verb", "a": "adjective", "r": "adverb"}
+# Senses that are rarely the one meant when nothing says otherwise: a field
+# label ("(astronomy) ..."), a taxonomic rank ("a genus of ..."), or a material
+# taken from the thing ("flesh of ...", "wood of ...") rather than the thing.
+SIDE_SENSE = re.compile(r"\(|(a |type )?genus\b|family of\b|(wool|fur|wood|flesh) of\b")
+
 # Small nudge toward nouns when the usage counts cannot decide.
 POS_BONUS = {"n": 2.5, "v": 0.5, "a": 1.0, "r": 0.0}
 
@@ -361,8 +366,8 @@ class WordNet:
                     score -= min(rank - 1, 4)
                     score += POS_BONUS[pos]
                     score += 1 if lemma == word else 0
-                    if evidence == 0 and synset["gloss"].startswith("("):
-                        score -= 3  # "(astronomy) ...": a specialist sense
+                    if evidence == 0 and SIDE_SENSE.match(synset["gloss"]):
+                        score -= 3  # a specialist or by-product sense
                     if best_score is None or score > best_score:
                         best_score, best = score, (lemma, pos, offset, loose)
             return best
