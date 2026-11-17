@@ -35,6 +35,7 @@ module scripts and `fetch` on `file://`.
 | Found words | Alphabetical list. Tap a word to open its card. |
 | Word card | A play button that speaks the word, its meaning, a sample sentence and a picture. A word with several common meanings shows each on its own tab, most common first. |
 | Hints | Word, point and septet counts, a first-letter by length grid, and two-letter starts. Can show totals or only what is left. |
+| Answers | Reveals every word in the puzzle you are playing, after a confirm step, marked with the ones you found. You can keep playing; the day is flagged as revealed in Past puzzles and in the copied result. |
 | Yesterday | Every answer from the previous puzzle, marked with the ones you found. Also tappable. |
 | Stats | Days played, words, septets, points, streaks, and days finished at each rank. |
 | Past puzzles | Replay any of the last 60 days; each day keeps its own progress. |

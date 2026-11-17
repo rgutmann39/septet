@@ -34,6 +34,7 @@
     </div>
     <nav class="toolbar" aria-label="Game menu">
       <button type="button" data-open="hints">Hints</button>
+      <button type="button" data-open="answers">Answers</button>
       <button type="button" data-open="yesterday">Yesterday</button>
       <button type="button" data-open="stats">Stats</button>
       <button type="button" data-open="archive">Past puzzles</button>
@@ -123,6 +124,8 @@
       <p>Your points move you up through the ranks, from Tuning Up to Maestro. Tap your rank to see what each one takes.</p>
       <h3>Playing</h3>
       <p>Tap the letters or type. <kbd>Enter</kbd> submits, <kbd>Backspace</kbd> deletes, <kbd>Space</kbd> shuffles. A new puzzle arrives every day at midnight, and your progress is saved on this device.</p>
+      <h3>Stuck?</h3>
+      <p>Open <strong>Answers</strong> to reveal every word in the puzzle you are playing. It asks first, so you cannot spoil it by accident. You can keep playing afterwards, and the day is marked as revealed.</p>
       <h3>Meanings and pictures</h3>
       <p>Tap any word you have found, or any word in yesterday's answers, to see what it means, a sample sentence and a picture, and to hear it spoken. Words with more than one common meaning show each of them, most common first.</p>
       <p class="fine-print" id="about-data"></p>
@@ -147,6 +150,21 @@
       <div class="table-scroll"><table class="hint-grid" id="hint-grid"></table></div>
       <h3>By first two letters</h3>
       <ul class="pair-list" id="pair-list"></ul>
+    </div>
+  </dialog>
+
+  <dialog id="dlg-answers" aria-labelledby="answers-title">
+    <form method="dialog" class="dialog-head"><h2 id="answers-title">Today's answers</h2><button class="dialog-close" aria-label="Close">&times;</button></form>
+    <div class="dialog-body">
+      <div id="answers-gate">
+        <p class="lede" id="answers-ask"></p>
+        <div class="dialog-actions"><button type="button" class="pill solid" id="btn-reveal">Reveal all words</button><button type="button" class="pill" id="btn-reveal-cancel">Not yet</button></div>
+      </div>
+      <div id="answers-shown" hidden>
+        <p class="lede" id="answers-lede"></p>
+        <p class="legend"><span class="legend-item"><span class="tick" aria-hidden="true"></span> you found it</span><span class="legend-item"><strong>bold</strong> is a septet</span><span class="legend-item">tap a word for its meaning</span></p>
+        <ul class="word-list answers" id="answers-list"></ul>
+      </div>
     </div>
   </dialog>
 

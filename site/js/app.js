@@ -38,6 +38,7 @@ let today = dateKey();
 let viewDate = today;
 let puzzle = null;
 let found = [];
+let revealed = false;
 let entry = '';
 let outer = [];
 let locked = false;
@@ -67,6 +68,12 @@ function savedWords(date, forPuzzle) {
   return day.w.filter((word) => forPuzzle.answerSet.has(word));
 }
 
+/** Whether the answers were revealed for a date's current puzzle. */
+function isRevealed(date, forPuzzle) {
+  const day = store.days[date];
+  return Boolean(day?.v && day.l === forPuzzle.letters);
+}
+
 function persist() {
   const score = scoreOf(found);
   store.days[viewDate] = {
@@ -76,6 +83,7 @@ function persist() {
     t: puzzle.total,
     r: rankIndex(score, puzzle.total),
     p: found.filter(isSeptet).length,
+    ...(revealed && { v: 1 }),
   };
   saveStore();
 }
@@ -92,6 +100,7 @@ function openDay(date) {
   viewDate = date;
   puzzle = createPuzzle(lettersFor(date), dictionary);
   found = savedWords(date, puzzle);
+  revealed = isRevealed(date, puzzle);
   entry = '';
   outer = [...puzzle.outer];
   const url = new URL(location.href);
@@ -272,6 +281,7 @@ function cheer(index) {
 const fillers = {
   ranks: fillRanks,
   hints: fillHints,
+  answers: fillAnswers,
   yesterday: fillYesterday,
   stats: fillStats,
   archive: fillArchive,
@@ -310,6 +320,7 @@ function shareText() {
     `Septet · ${formatDate(viewDate, { month: 'short', day: 'numeric', year: 'numeric' })}`,
     `${rank}: ${score} of ${puzzle.total} points`,
     `${found.length} of ${puzzle.answers.length} words${septets ? `, ${plural(septets, 'septet')}` : ''}`,
+    ...(revealed ? ['Answers revealed'] : []),
   ].join('\n');
 }
 
@@ -377,6 +388,41 @@ function fillHints() {
     pairs.append(el('li', {}, el('b', { textContent: item.pair }), ` ${n}`));
   }
   if (!pairs.children.length) pairs.append(el('li', { textContent: 'Nothing left to find.' }));
+}
+
+function fillAnswers() {
+  const isToday = viewDate === today;
+  $('answers-title').textContent = isToday ? "Today's answers" : `Answers for ${formatDate(viewDate, { month: 'short', day: 'numeric' })}`;
+  $('answers-gate').hidden = revealed;
+  $('answers-shown').hidden = !revealed;
+  const list = $('answers-list');
+  list.replaceChildren();
+  if (!revealed) {
+    const left = puzzle.answers.length - found.length;
+    const which = isToday ? "today's" : 'this';
+    $('answers-ask').textContent = !left
+      ? 'You have found every word already. Reveal the list anyway?'
+      : `This shows all ${plural(puzzle.answers.length, 'word')} in ${which} puzzle`
+        + `${found.length ? `, including the ${plural(left, 'word')} you have not found yet` : ''}. `
+        + 'You can keep playing afterwards.';
+    return;
+  }
+  const mine = new Set(found);
+  $('answers-lede').textContent = `You found ${found.length} of ${plural(puzzle.answers.length, 'word')} `
+    + `and ${scoreOf(found)} of ${plural(puzzle.total, 'point')}.`;
+  for (const word of puzzle.answers) {
+    const button = wordButton(word, mine.has(word) ? 'got' : 'missed');
+    button.dataset.word = word;
+    if (mine.has(word)) button.append(el('span', { className: 'visually-hidden', textContent: ' (found)' }));
+    list.append(el('li', {}, button));
+  }
+}
+
+function revealAnswers() {
+  revealed = true;
+  persist();
+  fillAnswers();
+  $('answers-list').querySelector('button')?.focus();
 }
 
 function fillYesterday() {
@@ -479,9 +525,10 @@ function fillArchive() {
     const date = shiftDateKey(today, -back);
     const day = store.days[date];
     const played = day?.w?.length && day.l === lettersFor(date);
+    const current = day?.l === lettersFor(date);
     const status = played
-      ? `${RANKS[day.r ?? 0].name} · ${day.s} of ${day.t} points`
-      : 'Not played yet';
+      ? `${RANKS[day.r ?? 0].name} · ${day.s} of ${day.t} points${day.v ? ' · revealed' : ''}`
+      : current && day.v ? 'Answers revealed' : 'Not played yet';
     const label = back === 0 ? 'Today' : formatDate(date, { weekday: 'short', month: 'short', day: 'numeric' });
     const button = el('button', {
       type: 'button',
@@ -748,6 +795,8 @@ function bindEvents() {
   $('card-close').onclick = closeCard;
   $('card-play').onclick = playWord;
   $('hints-left').onchange = fillHints;
+  $('btn-reveal').onclick = revealAnswers;
+  $('btn-reveal-cancel').onclick = () => $('dlg-answers').close();
   $('back-to-today').onclick = () => openDay(today);
 
   $('found-toggle').onclick = () => {
