@@ -4,9 +4,8 @@ A daily word game for the browser. You get seven letters, one of them in the
 middle, and find as many words as you can. Every word needs the middle letter,
 letters can repeat, and there is never an S.
 
-It plays by the rules of the seven-letter "word hive" genre made popular by
-the New York Times Spelling Bee, with its own name, look, ranks, word list and
-puzzles. Tap any word you have found (or any of yesterday's answers) to hear
+It plays by the rules of the seven-letter "word hive" genre, with its own
+name, look, ranks and puzzles. Tap any word you have found (or any of yesterday's answers) to hear
 it spoken and see what it means, with a sample sentence and a picture.
 
 **Play it at <https://rgutmann39.github.io/septet/>.**
@@ -46,8 +45,9 @@ module scripts and `fetch` on `file://`.
 ## How it works
 
 ```
-tools/build_data.py      ──►  site/data/words.txt        accepted dictionary (17k words)
-   (run by hand,               site/data/puzzles.json     schedule: 1,785 puzzles, ~5 years
+tools/fetch_reference.py ──►  tools/reference/          reference verdicts, local only (19k words)
+tools/build_data.py      ──►  site/data/words.txt        accepted dictionary (23k words)
+   (run by hand,               site/data/puzzles.json     schedule: 577 puzzles, ~1.6 years
     output committed)          site/data/defs/a..z.json   meanings and sample sentences per word
                                site/data/meta.json        build summary
 tools/build_pictures.mjs ──►  site/data/pics/a..z.json   optional picture index (not included)
@@ -65,29 +65,46 @@ committed, so hosting needs no build step and no backend.
 
 ### Which words are accepted
 
-The New York Times does not publish a dictionary for its game: the list is
-curated by hand by its editor, who leaves out anything obscure, hyphenated,
-offensive, or a proper noun. Septet follows the same policy with open data:
+The word list is matched to a **reference list**: for about 19,000 words, a
+record of whether a long-running game in this genre accepted or rejected the
+word the last time one of its puzzles allowed it. The reference is built
+locally and is not part of this repository (see "Rebuilding the data").
 
-1. **Start from SCOWL**, a set of word lists graded by how common each word
-   is. Only lower-case entries are used, which excludes proper nouns,
-   abbreviations, hyphenated words and contractions. American spellings only.
-2. **Keep the common ones.** Each word needs a minimum frequency in real text
-   (from `wordfreq`), and the bar rises with SCOWL's rarity tier. The
-   reference-dictionary tier is excluded outright.
-3. **Drop offensive words** using a profanity list, including inflected forms.
-4. **Curate by hand** for what the rules cannot see. The files in
-   `tools/curation/` are plain text:
-   - `deny.txt` removes words (names that double as words, British-only
-     terms, slurs the list missed).
-   - `allow.txt` adds words (ramen, tahini, mojo).
+1. **The reference verdict, where there is one.** The build follows it word
+   for word. A test checks that it does, wherever the reference is present.
+2. **A prediction for the rest.** Most words with six or seven different
+   letters have no verdict. Candidates come from SCOWL (lower-case American
+   and common entries) and ENABLE, a large public-domain word-game list. A
+   model trained on the judged words predicts the verdict from the word's
+   SCOWL tier and ENABLE listing, how common it is in English and in other
+   languages, what WordNet knows about it, and how related words were judged
+   (*pipetting* follows *pipette*). Words at even odds or better are accepted.
+   Tested on words judged for the first time after a cut-off date, it gets
+   87-88% of them right; the frequency rules it replaced managed 81-83%.
+3. **Offensive words** without a verdict are dropped using a profanity list,
+   including inflected forms.
+4. **Curation by hand** wins over both. The files in `tools/curation/` are
+   plain text:
+   - `deny.txt` removes words (slurs, names, British-only terms the model
+     might let through).
+   - `allow.txt` adds words (ramen, tahini, trebuchet).
    - `not_offensive.txt` rescues ordinary words the profanity list flags.
 
-A puzzle is used only if it has 20 to 55 words, 70 to 260 points, and at
-least one septet that is a reasonably common word. Each set of seven letters
-appears once.
+   `build_data.py --report` lists any entries that contradict the reference.
 
-To change the dictionary, edit the curation files and rebuild.
+Puzzles are chosen so their answers match the reference:
+
+- A puzzle never reuses a letter set the reference has used, so Septet's
+  puzzles are its own.
+- For each word without a verdict that a puzzle's letters allow, the model's
+  chance of getting it wrong is added up. A puzzle may expect at most one
+  such word; the median puzzle expects 0.24.
+- It has 20 to 65 words and 70 to 330 points, and at least one septet that
+  is a reasonably common word. Each set of seven letters appears once.
+- Dates already published (before 1 December 2026) keep their puzzle, so a
+  rebuild does not wipe saved progress.
+
+To change the dictionary by hand, edit the curation files and rebuild.
 
 ### Definitions
 
@@ -102,7 +119,8 @@ those counts come from a small, older corpus, two more things apply:
   WordNet lacks, mostly function words (*that*, *with*) and recent ones
   (*emoji*, *hoodie*).
 
-About 1 word in 70 still has no bundled definition; for those the browser
+About 1 word in 13 still has no bundled definition, mostly recent and
+informal words WordNet lacks (*relatable*, *gonna*); for those the browser
 asks Wiktionary. Every card links to the full Merriam-Webster entry.
 
 ### Meanings and sample sentences
@@ -130,8 +148,8 @@ A corpus sentence cannot be assumed to use the right meaning of a word that
 has several. Unless one meaning clearly dominates, the sentence must share
 vocabulary with the meaning shown and not with the others; if none does,
 there is no sentence. That is deliberate: no sentence is better than one that
-illustrates a different meaning. As built, 87% of defined words have a
-sentence for their first meaning, and 1,464 words have more than one meaning.
+illustrates a different meaning. As built, 80% of defined words have a
+sentence for their first meaning, and 1,497 words have more than one meaning.
 
 ### Pronunciation
 
@@ -189,7 +207,8 @@ identifying whoever runs it. The game works the same with or without it.
 
 ```sh
 python3 -m venv .venv && . .venv/bin/activate
-pip install -r tools/requirements.txt  # wordfreq, nltk
+pip install -r tools/requirements.txt  # wordfreq, nltk, scikit-learn
+python tools/fetch_reference.py       # reference verdicts (local, see below)
 python tools/build_data.py            # dictionary, puzzles, definitions
 npm test                              # checks the new files
 
@@ -197,9 +216,20 @@ npm test                              # checks the new files
 SEPTET_CONTACT=<your URL or email> node tools/build_pictures.mjs
 ```
 
-`build_data.py --report` prints extra detail for tuning the word list. Its
-sources (about 100 MB, most of it the sentence corpus) are downloaded once
-into `tools/.cache/` and verified by checksum.
+`build_data.py --report` prints extra detail for tuning the word list: the
+least certain predictions in scheduled puzzles, curation that contradicts the
+reference, and the model's cross-validated accuracy. Its sources (about
+100 MB, most of it the sentence corpus) are downloaded once into
+`tools/.cache/` and verified by checksum.
+
+**The reference list stays local.** `tools/reference/` is git-ignored.
+`fetch_reference.py` reads where to download past puzzle answers from
+`tools/reference/sources.json`, a small file you keep yourself (its format is
+in the script's docstring), and writes `verdicts.tsv` and `letter_sets.txt`
+beside it. `build_data.py` needs those two files; without them it stops and
+says so. Keep a copy of `sources.json` somewhere private: it is the only part
+that cannot be regenerated. Run `fetch_reference.py` now and then to pick up
+recent puzzles, then rebuild.
 `build_pictures.mjs` caches each batch, makes one request at a time, and
 stops as soon as Wikipedia asks it to slow down; run it again later to
 resume.

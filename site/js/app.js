@@ -924,8 +924,8 @@ async function start() {
     dictionary = words.split('\n').filter(Boolean);
     schedule = puzzles;
     if (meta) {
-      $('about-data').textContent = `The dictionary holds ${meta.words.toLocaleString()} common American-English words, `
-        + 'built from the SCOWL word lists. Definitions come from Princeton WordNet, with Wiktionary as a backup; '
+      $('about-data').textContent = `The dictionary holds ${meta.words.toLocaleString()} American-English words, `
+        + 'built from the SCOWL and ENABLE word lists. Definitions come from Princeton WordNet, with Wiktionary as a backup; '
         + 'pictures come from Wikipedia. Septet is an independent project.';
     }
   } catch (error) {

@@ -1,8 +1,12 @@
 # Words removed from the dictionary by hand. One word per line; '#' starts a
-# comment. Inflected forms of a denied word are removed too.
+# comment. A word listed here is removed even if the reference list accepts
+# it, so entries that contradict the reference cost parity;
+# `build_data.py --report` lists any. Inflected forms of a denied word are
+# removed too, unless the reference has judged them.
 #
-# The automatic rules (commonness tier + corpus frequency) do most of the work.
-# This file catches what they cannot see.
+# The reference verdicts (tools/reference/verdicts.tsv, built locally) settle
+# every word they cover, and a model predicts the rest. This file catches what
+# the model cannot see in words the reference has not judged.
 
 # --- Offensive: slurs and crude terms the profanity source misses ----------
 blackface
@@ -20,8 +24,6 @@ mongol
 negro
 pedophile
 perv
-poof
-pothead
 rape
 titty
 wetback
@@ -29,36 +31,22 @@ whitey
 
 # --- Informal contractions and spellings, not dictionary words -------------
 betcha
-dammit
-dunno
 gawd
-gimme
 goddammit
-gonna
 gotcha
-gotta
-helluva
 innit
 lemme
 mkay
 outta
 thru
-wanna
 
 # --- Prefixes and fragments that only look like words ----------------------
-anti
 contra
-hydro
 infra
-maxi
-mega
-micro
-midi
 multi
 poly
 
 # --- Mostly known as names or brands; frequency data cannot tell them apart -
-amazon
 amazonian
 bailey
 balboa
@@ -66,23 +54,16 @@ barbie
 barney
 batman
 benedictine
-billy
 bobby
 bolivar
 bowman
-canton
 carter
 charlie
 coley
-colleen
 collier
 corrie
-cupid
 cutler
-delft
 dido
-dirk
-doge
 dozier
 draper
 dumbo
@@ -90,44 +71,27 @@ dutch
 dyer
 freeman
 fritz
-google
 greenwood
 hamburg
 hector
-hogan
 hoover
 japan
-jenny
 johnny
-khan
 lilo
 ludo
-lulu
 marge
 medicaid
 medicare
 mercer
 mickey
-molly
-morocco
-napoleon
-panama
 phoebe
 pollard
-pooh
 quin
-rand
-rick
 roger
 romeo
-rowan
 timothy
 titian
-tony
-troy
-twain
 vela
-viking
 wally
 xerox
 
@@ -139,14 +103,9 @@ baldy
 bally
 barmy
 berk
-biff
 blimey
-bloke
-bonk
-boohoo
 brae
 brill
-burgh
 carer
 cheerio
 chippy
@@ -155,20 +114,13 @@ chuffed
 cine
 crikey
 croft
-cuppa
-dodgy
-fiddly
-flatmate
 footy
 forecourt
 gaffer
 gammon
 giro
-gran
 headteacher
-hiya
 jammy
-journo
 kitted
 knackered
 laird
@@ -179,9 +131,7 @@ locum
 lolly
 lough
 mater
-matey
 minder
-netball
 noddy
 nowt
 nutter
@@ -190,47 +140,34 @@ outwith
 pacey
 pally
 panto
-peaky
 pitta
-pleb
 ponce
-pong
-prat
 returner
 rota
 ruck
-tailback
 telly
 tenner
 termly
-whinge
-winkle
 witter
 wold
 
 # --- Too obscure, archaic, or slangy to be a fair answer -------------------
 academical
-ambit
 argent
 begum
 bijou
-bock
 calumet
 cantonment
 chicane
-chub
 cirque
 coco
 colorway
 conger
 corker
 cred
-diddly
 dingle
 docker
 dona
-dong
-doth
 ducky
 duper
 enquirer
@@ -238,50 +175,29 @@ fave
 feelgood
 filo
 finny
-gaga
-ganja
 godhead
 godhood
-hath
 headman
 hetero
 hombre
-hottie
 hummer
-iceman
 kana
 landau
-lech
 lorn
-lovey
 marque
-medico
 milt
-neath
 nimrod
-pappy
-phat
-pollack
-porky
 prithee
 pwned
-quint
 quoth
 roper
-tabor
-thane
 therefor
-thingy
-tong
 trad
 trier
 vita
 vitae
-wack
 wacker
 whereof
 whereon
-wort
 peter
 french
-antarctic

@@ -4,3 +4,7 @@ __pycache__/
 .venv/
 node_modules/
 .DS_Store
+
+# Reference data for matching the word list; generated locally by
+# tools/fetch_reference.py and never committed.
+tools/reference/
