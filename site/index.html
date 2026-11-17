@@ -60,7 +60,7 @@
         <span class="found-preview" id="found-preview" aria-hidden="true"></span>
         <svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
-      <p class="found-tip" id="found-tip">Tap any word for its meaning and a picture.</p>
+      <p class="found-tip" id="found-tip">Tap any word to hear it and see what it means.</p>
       <ul class="word-list" id="found-list"></ul>
     </section>
 
@@ -90,11 +90,17 @@
       <figcaption id="card-caption"></figcaption>
     </figure>
     <div class="card-body">
-      <p class="card-heading"><span class="card-word" id="card-word"></span> <span class="card-pos" id="card-pos"></span> <span class="card-badge" id="card-badge" hidden>Septet</span></p>
+      <div class="card-top">
+        <button type="button" class="card-play" id="card-play" data-state="idle">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5H4z" fill="currentColor"/><path class="wave" d="M15.5 9a4.2 4.2 0 0 1 0 6M18 6.5a7.8 7.8 0 0 1 0 11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+        <p class="card-heading"><span class="card-word" id="card-word"></span> <span class="card-pos" id="card-pos"></span> <span class="card-badge" id="card-badge" hidden>Septet</span></p>
+      </div>
+      <div class="card-tabs" id="card-tabs" role="group" aria-label="Meanings, most common first" hidden></div>
       <p class="card-definition" id="card-definition"></p>
       <p class="card-example" id="card-example" hidden></p>
       <p class="card-origin" id="card-origin" hidden></p>
-      <p class="card-links"><a id="card-more" target="_blank" rel="noopener">Full entry at Merriam-Webster</a><span id="card-source"></span></p>
+      <p class="card-links"><a id="card-more" target="_blank" rel="noopener">Full entry at Merriam-Webster</a><span id="card-source"></span><span id="card-audio-note"></span></p>
     </div>
   </div>
 
@@ -118,7 +124,7 @@
       <h3>Playing</h3>
       <p>Tap the letters or type. <kbd>Enter</kbd> submits, <kbd>Backspace</kbd> deletes, <kbd>Space</kbd> shuffles. A new puzzle arrives every day at midnight, and your progress is saved on this device.</p>
       <h3>Meanings and pictures</h3>
-      <p>Tap any word you have found, or any word in yesterday's answers, to see its most common meaning and a picture.</p>
+      <p>Tap any word you have found, or any word in yesterday's answers, to see what it means, a sample sentence and a picture, and to hear it spoken. Words with more than one common meaning show each of them, most common first.</p>
       <p class="fine-print" id="about-data"></p>
     </div>
   </dialog>

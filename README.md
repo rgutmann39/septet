@@ -30,7 +30,8 @@ module scripts and `fetch` on `file://`.
 | Seven letters, centre letter required | Tap the letters or type. Enter submits, Backspace deletes, Space shuffles. |
 | Scoring | 4 letters = 1 point, longer = 1 point per letter, a word using all seven letters (a *septet*) = +7. |
 | Ranks | Ten ranks from Tuning Up to Maestro, each a share of the day's points. Tap the rank to see the thresholds and copy your result. |
-| Found words | Alphabetical list. Tap a word for its definition and a picture. |
+| Found words | Alphabetical list. Tap a word to open its card. |
+| Word card | A play button that speaks the word, its meaning, a sample sentence and a picture. A word with several common meanings shows each on its own tab, most common first. |
 | Hints | Word, point and septet counts, a first-letter by length grid, and two-letter starts. Can show totals or only what is left. |
 | Yesterday | Every answer from the previous puzzle, marked with the ones you found. Also tappable. |
 | Stats | Days played, words, septets, points, streaks, and days finished at each rank. |
@@ -44,13 +45,14 @@ module scripts and `fetch` on `file://`.
 ```
 tools/build_data.py      ──►  site/data/words.txt        accepted dictionary (17k words)
    (run by hand,               site/data/puzzles.json     schedule: 1,785 puzzles, ~5 years
-    output committed)          site/data/defs/a..z.json   one definition per word
+    output committed)          site/data/defs/a..z.json   meanings and sample sentences per word
                                site/data/meta.json        build summary
 tools/build_pictures.mjs ──►  site/data/pics/a..z.json   optional picture index (not included)
 
 site/index.html + css/ + js/     the game; loads the data files with fetch()
    js/core.js      rules: scoring, validation, ranks, hints, schedule
    js/lookup.js    definitions and pictures for the word card
+   js/audio.js     pronunciation for the word card
    js/app.js       the page
 ```
 
@@ -100,6 +102,55 @@ those counts come from a small, older corpus, two more things apply:
 About 1 word in 70 still has no bundled definition; for those the browser
 asks Wiktionary. Every card links to the full Merriam-Webster entry.
 
+### Meanings and sample sentences
+
+A card shows up to three meanings, most common first. The first is chosen as
+described above. Others are added only when WordNet's usage counts show they
+are in real use: "light" gets the glow, the lamp and the opposite of heavy;
+most words get one. Where WordNet has almost nothing to go on and everyday
+text clearly uses the word as another part of speech, that reading leads. To
+set a word's meanings by hand, list them in `tools/curation/senses.txt`:
+
+```
+mole: burrowing mammal | congenital pigmented spot
+```
+
+Each meaning gets one sample sentence, in this order of preference:
+
+1. a sentence written by hand in `tools/curation/sentences.txt`;
+2. WordNet's own example, when it is a complete sentence using the exact
+   word, because it was written for that meaning;
+3. a sentence from Mozilla Common Voice's public-domain (CC0) sentence set,
+   with the word used as the right part of speech.
+
+A corpus sentence cannot be assumed to use the right meaning of a word that
+has several. Unless one meaning clearly dominates, the sentence must share
+vocabulary with the meaning shown and not with the others; if none does,
+there is no sentence. That is deliberate: no sentence is better than one that
+illustrates a different meaning. As built, 87% of defined words have a
+sentence for their first meaning, and 1,464 words have more than one meaning.
+
+### Pronunciation
+
+The play button on the card speaks the word.
+
+- **A recording when there is one.** Wikimedia Commons holds
+  American-English pronunciation recordings named `En-us-<word>.ogg`. The
+  game works out the file's address itself and plays it directly; no API is
+  involved. The card links to the recording's page, which names its author
+  and licence.
+- **Otherwise the device's own voice.** If the recording does not load, the
+  browser's built-in speech synthesizer says the word with an American
+  voice when the device has one.
+
+The browser cannot tell a missing recording from a refused request, so after
+a failure the game does not ask for that file again during the visit, and
+after three failures in a row it leaves recordings alone for five minutes
+and uses the device's voice.
+
+The recording and the voice are for the word as spelled. Words pronounced
+differently in different meanings ("lead", "wind") are spoken one way.
+
 ### Pictures
 
 Pictures are the lead images of Wikipedia articles, looked up from the
@@ -135,7 +186,7 @@ identifying whoever runs it. The game works the same with or without it.
 
 ```sh
 python3 -m venv .venv && . .venv/bin/activate
-pip install -r tools/requirements.txt
+pip install -r tools/requirements.txt  # wordfreq, nltk
 python tools/build_data.py            # dictionary, puzzles, definitions
 npm test                              # checks the new files
 
@@ -144,7 +195,8 @@ SEPTET_CONTACT=<your URL or email> node tools/build_pictures.mjs
 ```
 
 `build_data.py --report` prints extra detail for tuning the word list. Its
-sources are downloaded once into `tools/.cache/` and verified by checksum.
+sources (about 100 MB, most of it the sentence corpus) are downloaded once
+into `tools/.cache/` and verified by checksum.
 `build_pictures.mjs` caches each batch, makes one request at a time, and
 stops as soon as Wikipedia asks it to slow down; run it again later to
 resume.

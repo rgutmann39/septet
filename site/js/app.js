@@ -4,6 +4,7 @@ import {
   RANKS, checkGuess, createPuzzle, dateKey, daysBetween, hintTables, isDateKey, isSeptet,
   puzzleIndexFor, rankIndex, rankTable, scoreOf, shiftDateKey, shuffled,
 } from './core.js';
+import { pronounce, stopPronouncing } from './audio.js';
 import { lookupDefinition, lookupPicture } from './lookup.js';
 
 const STORE_KEY = 'septet.v1';
@@ -516,6 +517,7 @@ function cardIsOpen() {
 
 function closeCard() {
   cardRequest += 1;
+  stopPronouncing();
   if (cardAnchor) cardAnchor.setAttribute('aria-expanded', 'false');
   cardAnchor = null;
   if (!cardIsOpen()) return;
@@ -582,7 +584,83 @@ function setFigure(state, picture) {
   positionCard();
 }
 
-async function openCard(word, anchor) {
+/** Put a sample sentence on the card with the word itself in bold. */
+function showExample(box, sentence, word, base) {
+  box.replaceChildren();
+  box.hidden = !sentence;
+  if (!sentence) return;
+  // The word as written, else any form of its base ("pottering" for "potter").
+  const match = new RegExp(`\\b${word}\\b`, 'i').exec(sentence)
+    ?? (base ? new RegExp(`\\b${base}[a-z]*`, 'i').exec(sentence) : null);
+  if (!match) {
+    box.textContent = sentence;
+    return;
+  }
+  box.append(
+    sentence.slice(0, match.index),
+    el('b', { textContent: match[0] }),
+    sentence.slice(match.index + match[0].length),
+  );
+}
+
+/** Show one of the word's meanings: definition, sentence, picture. */
+function showMeaning(word, meanings, index, request) {
+  const meaning = meanings[index];
+  const base = meaning.lemma ?? meaning.from;
+  $('card-pos').textContent = meaning.pos;
+  $('card-definition').textContent = meaning.definition;
+  showExample($('card-example'), meaning.example, word, base);
+  $('card-origin').hidden = !base;
+  if (base) $('card-origin').textContent = meaning.lemma ? `A form of “${base}”.` : `From “${base}”.`;
+  for (const tab of $('card-tabs').querySelectorAll('button')) {
+    tab.setAttribute('aria-pressed', String(Number(tab.dataset.index) === index));
+  }
+
+  setFigure('loading');
+  const current = () => request === cardRequest && $('card-tabs').dataset.index === String(index);
+  const show = (picture, retry) => {
+    if (!current()) return;
+    if (!picture) {
+      setFigure('none');
+      return;
+    }
+    const image = $('card-image');
+    image.onload = () => current() && setFigure('ready', picture);
+    // A bundled picture can go stale (renamed or deleted file): look again, live.
+    image.onerror = () => (retry
+      ? lookupPicture(word, meaning, { live: true, index }).then((fresh) => show(fresh, false))
+      : show(null));
+    image.src = picture.src;
+  };
+  $('card-tabs').dataset.index = String(index);
+  lookupPicture(word, meaning, { index }).then((picture) => show(picture, Boolean(picture?.bundled)));
+}
+
+function setPlayState(state) {
+  const button = $('card-play');
+  button.dataset.state = state;
+  button.setAttribute('aria-busy', String(state === 'loading'));
+}
+
+async function playWord() {
+  const word = $('card-word').textContent;
+  const request = cardRequest;
+  const note = $('card-audio-note');
+  const result = await pronounce(word, (state) => request === cardRequest && setPlayState(state));
+  if (request !== cardRequest) return;
+  note.replaceChildren();
+  if (!result) {
+    note.textContent = ' · No audio could be played on this device';
+  } else if (result.source === 'recording') {
+    note.append(' · ', el('a', {
+      href: result.page, target: '_blank', rel: 'noopener', textContent: 'Recording from Wikimedia Commons',
+    }));
+  } else {
+    note.textContent = ' · Spoken by your device’s voice';
+  }
+}
+
+async function openCard(word, anchor, byKeyboard = false) {
   const reopening = cardAnchor === anchor && cardIsOpen();
   closeCard();
   if (reopening) return; // a second tap on the same word closes it
@@ -596,6 +674,7 @@ async function openCard(word, anchor) {
   const host = anchor.closest('dialog') ?? document.body;
   if (card.parentElement !== host) host.append(card);
 
+  const tabs = $('card-tabs');
   $('card-word').textContent = word;
   $('card-pos').textContent = '';
   $('card-badge').hidden = !isSeptet(word);
@@ -603,49 +682,60 @@ async function openCard(word, anchor) {
   $('card-example').hidden = true;
   $('card-origin').hidden = true;
   $('card-source').textContent = '';
+  $('card-audio-note').textContent = '';
+  $('card-play').setAttribute('aria-label', `Hear “${word}” pronounced`);
   $('card-more').href = `https://www.merriam-webster.com/dictionary/${encodeURIComponent(word)}`;
+  tabs.hidden = true;
+  tabs.replaceChildren();
+  delete tabs.dataset.index;
+  setPlayState('idle');
   setFigure('loading');
 
   if (popoverSupported) card.showPopover();
   else card.classList.add('open');
   positionCard();
+  if (byKeyboard) $('card-play').focus();
 
-  const definition = await lookupDefinition(word);
+  const found = await lookupDefinition(word);
   if (request !== cardRequest) return;
-  if (definition) {
-    $('card-pos').textContent = definition.pos;
-    $('card-definition').textContent = definition.definition;
-    if (definition.example) {
-      $('card-example').textContent = definition.example;
-      $('card-example').hidden = false;
-    }
-    const base = definition.lemma ?? definition.from;
-    if (base) {
-      $('card-origin').textContent = definition.lemma ? `A form of “${base}”.` : `From “${base}”.`;
-      $('card-origin').hidden = false;
-    }
-    $('card-source').textContent = ` · Definition from ${definition.source}`;
-  } else {
+  if (!found) {
     $('card-definition').textContent = 'No definition on file for this one.';
+    lookupPicture(word, null).then((picture) => {
+      if (request !== cardRequest) return;
+      if (!picture) {
+        setFigure('none');
+        return;
+      }
+      const image = $('card-image');
+      image.onload = () => request === cardRequest && setFigure('ready', picture);
+      image.onerror = () => request === cardRequest && setFigure('none');
+      image.src = picture.src;
+    });
+    positionCard();
+    return;
   }
-  positionCard();
 
-  const show = (picture, retry) => {
-    if (request !== cardRequest) return;
-    if (!picture) {
-      setFigure('none');
-      return;
-    }
-    const image = $('card-image');
-    image.onload = () => request === cardRequest && setFigure('ready', picture);
-    // A bundled picture can go stale (renamed or deleted file): look again, live.
-    image.onerror = () => (retry
-      ? lookupPicture(word, definition, { live: true }).then((fresh) => show(fresh, false))
-      : show(null));
-    image.src = picture.src;
-  };
-  const picture = await lookupPicture(word, definition);
-  show(picture, Boolean(picture?.bundled));
+  const { meanings, source } = found;
+  $('card-source').textContent = ` · Definition from ${source}`;
+  if (meanings.length > 1) {
+    tabs.append(el('span', { className: 'tabs-label', textContent: `${meanings.length} meanings` }));
+    meanings.forEach((meaning, index) => {
+      tabs.append(el('button', {
+        type: 'button',
+        textContent: String(index + 1),
+        title: meaning.definition,
+        onclick: () => {
+          showMeaning(word, meanings, index, request);
+          positionCard();
+        },
+      }));
+      tabs.lastChild.dataset.index = String(index);
+      tabs.lastChild.setAttribute('aria-label', `Meaning ${index + 1} of ${meanings.length}: ${meaning.pos}`);
+    });
+    tabs.hidden = false;
+  }
+  showMeaning(word, meanings, 0, request);
+  positionCard();
 }
 
 // ----------------------------------------------------------------- events --
@@ -656,6 +746,7 @@ function bindEvents() {
   $('btn-enter').onclick = submit;
   $('btn-share').onclick = copyResult;
   $('card-close').onclick = closeCard;
+  $('card-play').onclick = playWord;
   $('hints-left').onchange = fillHints;
   $('back-to-today').onclick = () => openDay(today);
 
@@ -678,7 +769,9 @@ function bindEvents() {
   document.addEventListener('click', (event) => {
     const word = event.target.closest('button[data-word]');
     if (word) {
-      openCard(word.dataset.word, word);
+      // detail is 0 for a click made with the keyboard: move focus to the
+      // play button so the next key press can speak the word.
+      openCard(word.dataset.word, word, event.detail === 0);
       return;
     }
     const opener = event.target.closest('[data-open]');

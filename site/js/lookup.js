@@ -59,15 +59,24 @@ function loadShard(letter) {
   return shards.get(letter);
 }
 
+/** Split a bundled entry into its meanings, most common first. */
+export function toMeanings(entry) {
+  const { more = [], ...first } = entry;
+  return [first, ...more];
+}
+
 /**
- * The most common definition of a word:
- * { pos, definition, example?, lemma?, from?, kind?, source } or null.
+ * What a word means: { meanings, source } or null.
+ * `meanings` holds one to three entries, most common first, each
+ * { pos, definition, example?, lemma?, from?, kind? }.
  */
 export async function lookupDefinition(word) {
   const shard = await loadShard(word[0]);
-  if (shard[word]) return { ...shard[word], source: 'WordNet' };
-  const data = await getJson(WIKTIONARY_API + encodeURIComponent(word));
-  return parseWiktionary(data);
+  if (shard[word]) return { meanings: toMeanings(shard[word]), source: 'WordNet' };
+  const found = parseWiktionary(await getJson(WIKTIONARY_API + encodeURIComponent(word)));
+  if (!found) return null;
+  const { source, ...meaning } = found;
+  return { meanings: [meaning], source };
 }
 
 /** Turn a snippet of HTML from Wiktionary into plain text. */
@@ -280,7 +289,12 @@ async function findPicture(word, entry, { skipOwnArticle = false } = {}) {
   return picture;
 }
 
-async function pictureFor(word, entry, live) {
+async function pictureFor(word, entry, live, index) {
+  if (index > 0) {
+    // A second or third meaning: the word's own article shows the first one,
+    // so only a search on this meaning's category can find the right picture.
+    return entry?.kind ? findPicture(word, entry, { skipOwnArticle: true }) : null;
+  }
   if (!live) {
     // The picture index built by tools/build_pictures.mjs answers most words
     // without calling anyone. A word missing from it has no usable article of
@@ -294,14 +308,14 @@ async function pictureFor(word, entry, live) {
 
 /**
  * A picture representing the word, or null when there is no good match.
- * `entry` is the definition returned by lookupDefinition (may be null).
- * Pass `live: true` to skip the bundled index, for instance when a bundled
- * picture no longer loads.
+ * `entry` is one of the meanings from lookupDefinition (may be null) and
+ * `index` its position among them. Pass `live: true` to skip the bundled
+ * index, for instance when a bundled picture no longer loads.
  */
-export function lookupPicture(word, entry, { live = false } = {}) {
-  const key = `${word}|${live}`;
+export function lookupPicture(word, entry, { live = false, index = 0 } = {}) {
+  const key = `${word}|${index}|${live}`;
   if (!pictures.has(key)) {
-    pictures.set(key, pictureFor(word, entry, live).catch(() => {
+    pictures.set(key, pictureFor(word, entry, live, index).catch(() => {
       pictures.delete(key);
       return null;
     }));

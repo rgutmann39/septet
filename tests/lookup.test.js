@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   THUMB_PREFIX, THUMB_SUFFIX, choosePicture, describesNamedEntity, packPicture, parseWiktionary, plainText,
-  unpackPicture,
+  toMeanings, unpackPicture,
 } from '../site/js/lookup.js';
 
 const page = (title, extra = {}) => ({
@@ -154,4 +154,16 @@ test('pictures survive the round trip through the compact bundled form', () => {
   // An address that does not follow the usual pattern is stored whole.
   const odd = { ...picture, src: 'https://upload.wikimedia.org/wikipedia/commons/a/ab/Small.png' };
   assert.equal(unpackPicture(packPicture(odd)).src, odd.src);
+});
+
+test('toMeanings lists a bundled entry\'s meanings, most common first', () => {
+  const entry = {
+    pos: 'noun', definition: 'a financial institution', example: 'He cashed a check at the bank.',
+    more: [{ pos: 'noun', definition: 'sloping land beside water' }],
+  };
+  assert.deepEqual(toMeanings(entry), [
+    { pos: 'noun', definition: 'a financial institution', example: 'He cashed a check at the bank.' },
+    { pos: 'noun', definition: 'sloping land beside water' },
+  ]);
+  assert.deepEqual(toMeanings({ pos: 'verb', definition: 'move fast' }), [{ pos: 'verb', definition: 'move fast' }]);
 });
