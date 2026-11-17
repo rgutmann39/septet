@@ -1,5 +1,8 @@
-# Words added to the dictionary by hand: everyday words the automatic rules
-# miss because the source list files them as rare. One word per line.
+# Words added to the dictionary by hand, for everyday words the reference list
+# has not judged yet that the model would leave out (entries the reference has
+# since accepted are harmless). A word listed here is added even if the
+# reference rejects it.
+# One word per line.
 frittata
 genomic
 manmade
@@ -14,7 +17,6 @@ biryani
 boba
 cafe
 challah
-chile
 falafel
 fiance
 fiancee
@@ -24,7 +26,6 @@ intel
 jalapeno
 kimchi
 matcha
-mojito
 nana
 nonillion
 offline

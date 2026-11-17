@@ -6,8 +6,18 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { createPuzzle, isDateKey, letterMask } from '../site/js/core.js';
 
 const data = new URL('../site/data/', import.meta.url);
+const tools = new URL('../tools/', import.meta.url);
 const words = readFileSync(new URL('words.txt', data), 'utf8').split('\n').filter(Boolean);
 const schedule = JSON.parse(readFileSync(new URL('puzzles.json', data), 'utf8'));
+const meta = JSON.parse(readFileSync(new URL('meta.json', data), 'utf8'));
+
+/** Non-comment lines of a tools/ text file, split on tabs. */
+function rows(path) {
+  return readFileSync(new URL(path, tools), 'utf8').split('\n')
+    .map((line) => line.split('#')[0].trim())
+    .filter(Boolean)
+    .map((line) => line.split('\t'));
+}
 
 test('dictionary: sorted, unique, and every word is playable', () => {
   assert.ok(words.length > 10000);
@@ -46,7 +56,36 @@ test('schedule: every puzzle has a septet and a sensible number of words', () =>
       }
     }
     assert.ok(septets >= 1, `${letters} has no septet`);
-    assert.ok(count >= 20 && count <= 55, `${letters} has ${count} words`);
+    // New puzzles have 20 to 65 words; kept ones may have grown to 80.
+    assert.ok(count >= 20 && count <= 80, `${letters} has ${count} words`);
+  }
+});
+
+// The reference list is built locally by tools/fetch_reference.py and never
+// committed, so these two checks only run where it exists.
+const reference = new URL('reference/verdicts.tsv', tools);
+const noReference = !existsSync(reference) && 'no local reference list (tools/fetch_reference.py)';
+
+test('dictionary: agrees with every reference verdict, apart from hand curation', { skip: noReference }, () => {
+  const known = new Set(words);
+  const allow = new Set(rows('curation/allow.txt').map(([word]) => word));
+  const deny = new Set(rows('curation/deny.txt').map(([word]) => word));
+  const verdicts = rows('reference/verdicts.tsv');
+  assert.ok(verdicts.length > 15000, `only ${verdicts.length} verdicts`);
+  const wrong = [];
+  for (const [word, verdict] of verdicts) {
+    const expected = deny.has(word) ? false : allow.has(word) ? true : verdict === '1';
+    if (known.has(word) !== expected) wrong.push(word);
+  }
+  assert.deepEqual(wrong.slice(0, 20), [], `${wrong.length} words disagree`);
+  for (const word of ['pitapat', 'pipette', 'palapa']) assert.ok(known.has(word), word);
+});
+
+test('schedule: new puzzles do not reuse a reference letter set', { skip: noReference }, () => {
+  const used = new Set(rows('reference/letter_sets.txt').map(([letters]) => letters));
+  assert.ok(used.size > 1000);
+  for (const letters of schedule.puzzles.slice(meta.kept ?? 0)) {
+    assert.ok(!used.has([...letters].sort().join('')), `${letters} is a reference letter set`);
   }
 });
 
@@ -56,7 +95,7 @@ test('createPuzzle agrees with the schedule on a sample puzzle', () => {
   assert.ok(puzzle.total > 0);
 });
 
-test('definitions: almost every word has one, in the right shard', () => {
+test('definitions: most words have one, in the right shard', () => {
   const files = readdirSync(new URL('defs/', data)).filter((name) => name.endsWith('.json'));
   let defined = 0;
   let withSentence = 0;
@@ -78,8 +117,11 @@ test('definitions: almost every word has one, in the right shard', () => {
       defined += 1;
     }
   }
-  assert.ok(defined / words.length > 0.97, `only ${defined} of ${words.length} words are defined`);
-  assert.ok(withSentence / defined > 0.8, `only ${withSentence} of ${defined} definitions have a sample sentence`);
+  // The dictionary has many recent and informal words WordNet lacks
+  // ("relatable", "gonna"); the card looks those up in Wiktionary.
+  assert.ok(defined / words.length > 0.9, `only ${defined} of ${words.length} words are defined`);
+  // Rarer words have fewer corpus sentences to choose from; 80% as built.
+  assert.ok(withSentence / defined > 0.75, `only ${withSentence} of ${defined} definitions have a sample sentence`);
 });
 
 test('pictures: every bundled entry belongs to a dictionary word', { skip: !existsSync(new URL('pics/', data)) }, () => {

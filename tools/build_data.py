@@ -9,10 +9,16 @@ Everything the browser needs is generated here, once, and committed under
     site/data/defs/<a-z>.json  most common definition for every accepted word
     site/data/meta.json        build summary (counts, sources)
 
+The dictionary is matched to a reference list of accepted and rejected
+words that tools/fetch_reference.py builds locally (tools/reference/, never
+committed). Words the reference has a verdict on keep it; the rest are
+predicted from those verdicts.
+
 Sources (all free / openly licensed, see CREDITS.md):
 
     SCOWL         word lists graded by how common a word is
-    wordfreq      corpus frequencies, used to drop obscure words
+    ENABLE        a large public-domain word-game list
+    wordfreq      corpus frequencies in English and other languages
     WordNet       definitions, ordered by how often each sense is used
     Common Voice  short everyday sentences, used as sample sentences
     badwords      profanity list, used to drop offensive words
@@ -36,6 +42,7 @@ import tarfile
 import urllib.request
 import zipfile
 from collections import Counter, defaultdict
+from datetime import date
 from itertools import combinations
 from pathlib import Path
 
@@ -46,6 +53,7 @@ from sentences import SentenceBank, stems
 ROOT = Path(__file__).resolve().parent.parent
 CACHE = Path(__file__).resolve().parent / ".cache"
 CURATION = Path(__file__).resolve().parent / "curation"
+REFERENCE = Path(__file__).resolve().parent / "reference"
 OUT = ROOT / "site" / "data"
 
 # --------------------------------------------------------------------------
@@ -62,6 +70,11 @@ SOURCES = {
         "url": "https://raw.githubusercontent.com/nltk/nltk_data/gh-pages/packages/corpora/wordnet31.zip",
         "sha256": "2a9e7da7d0c17ad875e4171a4d28ae17ab6969c7d67f1cf0f59d65c66d0fdd37",
         "label": "Princeton WordNet 3.1",
+    },
+    "enable": {
+        "url": "https://raw.githubusercontent.com/dolph/dictionary/694bf9529e986f9175dcbf5fe5875d111941b708/enable1.txt",
+        "sha256": "3f16130220645692ed49c7134e24a18504c2ca55b3c012f7290e3e77c63b1a89",
+        "label": "ENABLE word list (public domain)",
     },
     "badwords": {
         "url": "https://registry.npmjs.org/badwords-list/-/badwords-list-2.0.1-4.tgz",
@@ -92,23 +105,34 @@ MIN_LENGTH = 4
 BANNED_LETTERS = set("s")
 LETTERS_PER_PUZZLE = 7
 
-# A word is accepted when it is common enough. SCOWL grades words into tiers
-# (10 = the most common, 70 = large dictionary); the rarer the tier, the more
-# corpus evidence (Zipf frequency, roughly log10 of uses per billion words) a
-# word needs before it is let in. Tier 70 is reference-dictionary territory
-# and is only reachable through curation/allow.txt.
-MIN_ZIPF_BY_TIER = {10: 1.0, 20: 1.0, 35: 1.0, 40: 1.0, 50: 1.8, 55: 2.3, 60: 2.6}
+# Words the reference has never judged get a predicted chance of being
+# accepted (see AcceptanceModel) and are accepted at even odds or better.
+ACCEPT_AT = 0.5
+MODEL_SETTINGS = {"learning_rate": 0.05, "max_iter": 400, "max_leaf_nodes": 15,
+                  "l2_regularization": 1.0, "early_stopping": False, "random_state": 0}
 
-# Puzzle selection: enough words to be satisfying, few enough to finish.
+# Puzzle selection: sized like the reference puzzles, which since 2022 have
+# had 23 to 66 words in nine days out of ten (median 42).
 PUZZLE_MIN_WORDS = 20
-PUZZLE_MAX_WORDS = 55
+PUZZLE_MAX_WORDS = 65
 PUZZLE_MIN_POINTS = 70
-PUZZLE_MAX_POINTS = 260
+PUZZLE_MAX_POINTS = 330
+PUZZLE_TARGET_WORDS = 42
+# A puzzle's answers should match the reference. Words it has judged are
+# certain; for the rest, the chance that Septet's call differs from the
+# reference adds up, and a puzzle may expect at most this many such words.
+MAX_EXPECTED_MISMATCHES = 1.0
 # Every puzzle needs a word using all seven letters that a player can
 # reasonably be expected to know.
 FAIR_SEPTET_MIN_ZIPF = 2.6
 SCHEDULE_SEED = 20261101
 SCHEDULE_EPOCH = "2026-11-01"
+# Dates before this keep the puzzle they were first published with, so a
+# rebuild does not wipe progress players have saved for them. Move it forward
+# when rebuilding a schedule that has been live for a while.
+SCHEDULE_KEEP_UNTIL = "2026-12-01"
+# A kept puzzle may grow with the dictionary, up to the largest reference puzzle.
+KEPT_MAX_WORDS = 80
 
 # A word gets more than one meaning on its card only when the others are in
 # real use too. WordNet's usage counts decide: another reading of the word (a
@@ -198,6 +222,21 @@ def load_scowl() -> dict[str, int]:
     return tier_of
 
 
+def load_scowl_elsewhere() -> set[str]:
+    """Words SCOWL lists only for British, Canadian or Australian English."""
+    found: set[str] = set()
+    pattern = re.compile(r"package/(british|canadian|australian)-words-\d+\.json$")
+    with tarfile.open(fileobj=io.BytesIO(fetch("scowl")), mode="r:gz") as tar:
+        for member in tar.getmembers():
+            if pattern.match(member.name):
+                found.update(json.load(tar.extractfile(member)))
+    return found
+
+
+def load_enable() -> set[str]:
+    return set(fetch("enable").decode("utf-8").split())
+
+
 def load_badwords() -> set[str]:
     with tarfile.open(fileobj=io.BytesIO(fetch("badwords")), mode="r:gz") as tar:
         source = tar.extractfile("package/dist/array.js").read().decode("utf-8")
@@ -213,8 +252,36 @@ def is_playable_shape(word: str) -> bool:
         and len(word) >= MIN_LENGTH
         and not (set(word) & BANNED_LETTERS)
         and len(set(word)) <= LETTERS_PER_PUZZLE
-        and bool(set(word) & set("aeiouy"))
     )
+
+
+def has_vowel(word: str) -> bool:
+    return bool(set(word) & set("aeiouy"))
+
+
+def read_verdicts() -> tuple[dict[str, bool], str]:
+    """The reference's latest decision on every word its puzzles have allowed,
+    and the date of the newest puzzle (tools/reference/verdicts.tsv)."""
+    path = REFERENCE / "verdicts.tsv"
+    if not path.exists():
+        sys.exit(f"{path} is missing; run tools/fetch_reference.py to create it")
+    verdicts: dict[str, bool] = {}
+    newest = ""
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line and not line.startswith("#"):
+            word, verdict, last, _ = line.split("\t")
+            verdicts[word] = verdict == "1"
+            newest = max(newest, last)
+    return verdicts, newest
+
+
+def read_reference_letter_sets() -> set[int]:
+    """Letter sets the reference has used (tools/reference/letter_sets.txt)."""
+    path = REFERENCE / "letter_sets.txt"
+    if not path.exists():
+        return set()
+    return {mask_of(line.strip()) for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.startswith("#")}
 
 
 # --------------------------------------------------------------------------
@@ -269,6 +336,7 @@ class WordNet:
                     self.synsets[(pos, fields[0])] = {
                         "words": words, "gloss": gloss.strip(), "hypernym": hypernym,
                         "instance": instance,
+                        "lexfile": int(fields[1]),  # subject area: noun.food, verb.motion, ...
                     }
 
                 table: dict[str, list[str]] = {}
@@ -543,6 +611,158 @@ def split_gloss(gloss: str) -> tuple[str, list[str]]:
 
 
 # --------------------------------------------------------------------------
+# Predicting the reference
+# --------------------------------------------------------------------------
+# Endings and beginnings that relate a word to others the reference has judged:
+# "pipetting" to "pipette", "unhooked" to "hooked".
+SUFFIXES = (
+    "ing", "ed", "er", "est", "ly", "ness", "ment", "ful", "less", "able", "ible", "ity", "ion",
+    "ation", "or", "ish", "like", "y", "ie", "al", "ic", "ical", "ize", "ization", "ist", "ism",
+    "ette", "ee", "en", "age", "dom", "hood", "ship", "ward", "wise", "ery", "ary", "ory", "ous",
+    "ive", "ian", "an", "ent", "ant", "ence", "ance", "ency", "ancy",
+)
+PREFIXES = (
+    "un", "re", "pre", "non", "over", "out", "under", "mis", "dis", "anti", "de", "in", "im",
+    "inter", "mid", "mini", "micro", "multi", "semi", "sub", "super", "tri", "bi", "co", "counter",
+    "fore", "up", "down", "back", "hyper", "mega", "ultra", "tele", "auto", "photo", "neo", "pro",
+    "post",
+)
+OTHER_LANGUAGES = ("fr", "es", "it", "de", "pt", "nl")
+
+
+def suffix_bases(word: str) -> set[str]:
+    """Words this one could be built on by adding an ending."""
+    found: set[str] = set()
+    for suffix in SUFFIXES:
+        if word.endswith(suffix) and len(word) - len(suffix) >= 3:
+            stem = word[: -len(suffix)]
+            found |= {stem, stem + "e"}
+            if len(stem) > 2 and stem[-1] == stem[-2]:
+                found.add(stem[:-1])             # pipped -> pip
+            if stem.endswith("i"):
+                found.add(stem[:-1] + "y")       # tangier -> tangy
+            if suffix == "ly":
+                found.add(stem + "le")           # gently -> gentle
+                if stem.endswith("al"):
+                    found.add(stem[:-2])         # basically -> basic
+    found.discard(word)
+    return found
+
+
+def prefix_bases(word: str) -> set[str]:
+    return {word[len(p):] for p in PREFIXES if word.startswith(p) and len(word) - len(p) >= 3}
+
+
+class AcceptanceModel:
+    """What would the reference say about a word it has never judged?
+
+    The reference list is curated by hand, so no word list or frequency
+    cut-off matches it. This learns from the words it has judged instead. A word is
+    described by where it is listed (SCOWL and its tier, ENABLE, only in
+    British English), how common it is in English and in other languages,
+    what WordNet knows about it, and how the reference judged related words: the word it
+    is built on, words built on it, and the halves of a compound. A gradient
+    boosted tree model turns that into a chance of being accepted.
+
+    Tested by training on what the reference had decided before a date and
+    predicting the words it judged for the first time afterwards, it agrees on
+    87-88% of them, against 81-83% for the frequency rules it replaces.
+    """
+
+    def __init__(self, candidates: set[str], verdicts: dict[str, bool], tier_of: dict[str, int],
+                 elsewhere: set[str], enable: set[str], wordnet: WordNet, badwords: set[str]):
+        self.verdicts = verdicts
+        self.tier_of = tier_of
+        self.elsewhere = elsewhere
+        self.enable = enable
+        self.wordnet = wordnet
+        self.badwords = badwords
+        self.common = ({w for w, tier in tier_of.items() if tier <= 50 and w.islower()}
+                       | {w for w, ok in verdicts.items() if ok})
+        self.capitalized = {w.lower() for w in tier_of if w[:1].isupper()}
+        self.built_on: dict[str, set[str]] = defaultdict(set)
+        for word in candidates:
+            for base in suffix_bases(word):
+                if base in candidates:
+                    self.built_on[base].add(word)
+        self._cache: dict[str, dict[str, float]] = {}
+
+    def features(self, word: str) -> dict[str, float]:
+        if word in self._cache:
+            return self._cache[word]
+        wn, verdicts = self.wordnet, self.verdicts
+        zipf = zipf_frequency(word, "en")
+        abroad = max(zipf_frequency(word, lang) for lang in OTHER_LANGUAGES)
+        senses = wn.senses.get(word, [])
+        lower = any(wn.common(word, pos) for pos in "nvar")
+        f = {
+            f"tier_{self.tier_of.get(word, 'none')}": 1.0,
+            "enable": float(word in self.enable),
+            "elsewhere_only": float(word in self.elsewhere and word not in self.tier_of),
+            "zipf": zipf,
+            "unseen": float(zipf == 0),
+            "abroad": abroad,
+            "abroad_gap": abroad - zipf,
+            "length": float(len(word)),
+            "distinct": float(len(set(word))),
+            "wn_lemma": float(bool(senses)),
+            "wn_lower": float(lower),
+            "wn_capital_only": float(bool(senses) and not lower),
+            "wn_count": math.log1p(sum(s[3] for s in senses)),
+            "wn_senses": math.log1p(len(senses)),
+            "wn_reading": float(bool(wn.base_forms(word))),
+            "capitalized": float(word in self.capitalized),
+            "profane": float(word in self.badwords),
+        }
+        if senses:
+            areas = Counter(wn.synsets[(pos, offset)]["lexfile"] for pos, offset, _, _ in senses)
+            f[f"area_{areas.most_common(1)[0][0]}"] = 1.0
+        for name, bases in (("base", suffix_bases(word)), ("prefixed", prefix_bases(word))):
+            judged = [verdicts[b] for b in bases if b in verdicts]
+            f[f"{name}_accepted"] = float(any(judged))
+            f[f"{name}_rejected"] = float(bool(judged) and not any(judged))
+        built = [verdicts[w] for w in self.built_on.get(word, ()) if w in verdicts]
+        f["built_accepted"] = math.log1p(sum(built))
+        f["built_rejected"] = math.log1p(len(built) - sum(built))
+        f["base_common"] = float(any(b in self.common for b in suffix_bases(word)))
+        f["compound"] = float(any(word[:i] in self.common and word[i:] in self.common
+                                  for i in range(3, len(word) - 2)))
+        self._cache[word] = f
+        return f
+
+    def _fit(self, words: list[str]):
+        from sklearn.ensemble import HistGradientBoostingClassifier
+        from sklearn.feature_extraction import DictVectorizer
+        from threadpoolctl import threadpool_limits
+
+        vectorizer = DictVectorizer(sparse=False)
+        x = vectorizer.fit_transform([self.features(w) for w in words])
+        y = [self.verdicts[w] for w in words]
+        with threadpool_limits(1):  # one thread: the same model on every machine
+            model = HistGradientBoostingClassifier(**MODEL_SETTINGS).fit(x, y)
+        return vectorizer, model
+
+    def chances(self, train: list[str], words: list[str]) -> dict[str, float]:
+        """Train on ``train`` (judged words); the chance each of ``words`` is accepted."""
+        vectorizer, model = self._fit(train)
+        if not words:
+            return {}
+        p = model.predict_proba(vectorizer.transform([self.features(w) for w in words]))[:, 1]
+        return {w: float(v) for w, v in zip(words, p)}
+
+    def cross_validated_accuracy(self, words: list[str], folds: int = 5) -> float:
+        """Share of judged words predicted correctly when held out (for --report)."""
+        order = sorted(words, key=lambda w: hashlib.sha1(w.encode()).hexdigest())
+        right = 0
+        for k in range(folds):
+            held = order[k::folds]
+            held_set = set(held)
+            chance = self.chances([w for w in order if w not in held_set], held)
+            right += sum((chance[w] >= ACCEPT_AT) == self.verdicts[w] for w in held)
+        return right / len(order)
+
+
+# --------------------------------------------------------------------------
 # Sample sentences
 # --------------------------------------------------------------------------
 def load_sentence_bank(words: list[str], senses: dict[str, list[dict]], tier_of: dict[str, int],
@@ -607,7 +827,8 @@ def choose_sentence(word: str, index: int, senses: list[dict], bank: SentenceBan
     if sense.get("example"):
         return sense["example"]  # hand-written entry
     base = sense.get("lemma") or sense.get("from")
-    examples = sense.get("_examples", [])
+    # A sample sentence opens with a word or a quotation, not "15 is dividable by 3".
+    examples = [e for e in sense.get("_examples", []) if re.match(r"""[A-Za-z'"]""", e)]
 
     def has(text: str, form: str, whole: bool) -> bool:
         return bool(re.search(rf"\b{re.escape(form)}" + (r"\b" if whole else ""), text, re.I))
@@ -653,52 +874,99 @@ def word_points(word: str) -> int:
     return points
 
 
-def build_puzzles(words: list[str], zipf: dict[str, float]) -> tuple[list[str], dict]:
+def puzzle_answers(letters: str, words: list[str]) -> list[str]:
+    allowed, centre = mask_of(letters), mask_of(letters[0])
+    return [w for w in words if mask_of(w) & centre and not mask_of(w) & ~allowed]
+
+
+def published_puzzles(words: list[str]) -> list[str | None]:
+    """The puzzles already shown for dates before SCHEDULE_KEEP_UNTIL.
+
+    They stay on their dates so the progress players saved for them survives a
+    rebuild. One that no longer works with the new dictionary (no septet, or
+    far too many words) becomes None and is replaced.
+    """
+    path = OUT / "puzzles.json"
+    if not path.exists():
+        return []
+    old = json.loads(path.read_text(encoding="utf-8"))
+    if old.get("epoch") != SCHEDULE_EPOCH:
+        return []
+    days = (date.fromisoformat(SCHEDULE_KEEP_UNTIL) - date.fromisoformat(SCHEDULE_EPOCH)).days
+    kept: list[str | None] = []
+    for letters in old["puzzles"][:max(0, days)]:
+        answers = puzzle_answers(letters, words)
+        fits = (PUZZLE_MIN_WORDS <= len(answers) <= KEPT_MAX_WORDS
+                and any(len(set(w)) == LETTERS_PER_PUZZLE for w in answers))
+        kept.append(letters if fits else None)
+    return kept
+
+
+def build_puzzles(words: list[str], zipf: dict[str, float], doubt: dict[str, float],
+                  avoid: set[int], kept: list[str | None]) -> tuple[list[str], dict]:
+    """The schedule: the kept puzzles first, then the rest in a fixed shuffle.
+
+    ``doubt`` is, for each word decided without a reference verdict, the
+    chance that the reference would decide otherwise; a puzzle's expected
+    mismatches are the sum over the words its letters allow. ``avoid`` holds
+    letter sets the reference has used, so Septet's puzzles are its own.
+    """
     by_mask: dict[int, list[str]] = defaultdict(list)
     for word in words:
         by_mask[mask_of(word)].append(word)
+    doubt_at: dict[int, float] = defaultdict(float)
+    for word, chance in doubt.items():
+        doubt_at[mask_of(word)] += chance
+    taken = {mask_of(letters) for letters in kept if letters}
 
     septet_masks = [m for m in by_mask if bin(m).count("1") == LETTERS_PER_PUZZLE]
-    chosen: list[tuple[str, int, int]] = []
+    chosen: list[tuple[str, int, int, float]] = []
     for mask in septet_masks:
+        if mask in avoid or mask in taken:
+            continue
         if max(zipf[w] for w in by_mask[mask]) < FAIR_SEPTET_MIN_ZIPF:
             continue
         letters = [chr(97 + i) for i in range(26) if mask >> i & 1]
         bits = [1 << (ord(ch) - 97) for ch in letters]
         # Every word playable with these letters uses a subset of them.
-        playable: list[tuple[int, str]] = []
-        for size in range(1, LETTERS_PER_PUZZLE + 1):
-            for combo in combinations(bits, size):
-                sub = sum(combo)
-                for word in by_mask.get(sub, ()):
-                    playable.append((sub, word))
+        subsets = [sum(combo) for size in range(1, LETTERS_PER_PUZZLE + 1)
+                   for combo in combinations(bits, size)]
 
         options = []
         for letter, bit in zip(letters, bits):
-            answers = [w for sub, w in playable if sub & bit]
+            answers = [w for sub in subsets if sub & bit for w in by_mask.get(sub, ())]
             count = len(answers)
             points = sum(word_points(w) for w in answers)
+            expected = sum(doubt_at.get(sub, 0.0) for sub in subsets if sub & bit)
             if (PUZZLE_MIN_WORDS <= count <= PUZZLE_MAX_WORDS
-                    and PUZZLE_MIN_POINTS <= points <= PUZZLE_MAX_POINTS):
-                options.append((letter, count, points))
+                    and PUZZLE_MIN_POINTS <= points <= PUZZLE_MAX_POINTS
+                    and expected <= MAX_EXPECTED_MISMATCHES):
+                options.append((letter, count, points, expected))
         if not options:
             continue
         # One puzzle per letter set, so no two days feel like reruns. Take the
-        # centre letter whose puzzle is closest to a comfortable size.
-        letter, count, points = min(options, key=lambda o: (abs(o[1] - 36), o[0]))
+        # centre letter whose puzzle is closest to a typical size.
+        letter, count, points, expected = min(
+            options, key=lambda o: (abs(o[1] - PUZZLE_TARGET_WORDS), o[0]))
         outer = "".join(ch for ch in letters if ch != letter)
-        chosen.append((letter + outer, count, points))
+        chosen.append((letter + outer, count, points, expected))
 
     chosen.sort()
     random.Random(SCHEDULE_SEED).shuffle(chosen)
-    counts = sorted(c for _, c, _ in chosen)
-    points = sorted(p for _, _, p in chosen)
+    fresh = [letters for letters, _, _, _ in chosen]
+    schedule = [letters if letters else fresh.pop(0) for letters in kept] + fresh
+    sizes = [puzzle_answers(letters, words) for letters in schedule]
+    counts = sorted(len(a) for a in sizes)
+    points = sorted(sum(word_points(w) for w in a) for a in sizes)
+    expected = sorted(e for _, _, _, e in chosen)
     stats = {
-        "puzzles": len(chosen),
+        "puzzles": len(schedule),
         "medianWords": counts[len(counts) // 2] if counts else 0,
         "medianPoints": points[len(points) // 2] if points else 0,
+        "kept": sum(1 for letters in kept if letters),
+        "medianExpectedMismatches": round(expected[len(expected) // 2], 2) if expected else 0,
     }
-    return [letters for letters, _, _ in chosen], stats
+    return schedule, stats
 
 
 # --------------------------------------------------------------------------
@@ -712,44 +980,64 @@ def main() -> None:
 
     print("Loading sources")
     tier_of = load_scowl()
+    elsewhere = load_scowl_elsewhere()
+    enable = load_enable()
     wordnet = WordNet(fetch("wordnet"))
-    blocked = load_badwords() | read_curation("deny.txt")
+    badwords = load_badwords()
+    verdicts, newest_puzzle = read_verdicts()
+    deny = read_curation("deny.txt")
     allow = read_curation("allow.txt")
     not_offensive = read_curation("not_offensive.txt")
-    blocked -= not_offensive
+    blocked = (badwords | deny) - not_offensive
 
     print("Selecting words")
-    zipf: dict[str, float] = {}
-    accepted: set[str] = set()
-    dropped = Counter()
-    for word, tier in tier_of.items():
-        if not is_playable_shape(word):
-            continue
-        freq = zipf_frequency(word, "en")
-        threshold = MIN_ZIPF_BY_TIER.get(tier)
-        if threshold is None or freq < threshold:
-            dropped["too obscure"] += 1
-            continue
-        zipf[word] = freq
-        accepted.add(word)
-
     for word in allow:
         if not is_playable_shape(word):
             sys.exit(f"curation/allow.txt: '{word}' can never be an answer (check its letters)")
-        accepted.add(word)
-        zipf[word] = max(zipf_frequency(word, "en"), FAIR_SEPTET_MIN_ZIPF)
+    candidates = ({w for w in tier_of if is_playable_shape(w)} | {w for w in enable if is_playable_shape(w)}
+                  | {w for w in verdicts if is_playable_shape(w)})
 
-    # Offensive words go, along with their inflections ("-ed", "-ing", ...).
-    for word in sorted(accepted):
-        forms = {word} | {lemma for lemma, _ in wordnet.base_forms(word)}
-        if forms & blocked:
-            accepted.discard(word)
-            dropped["offensive or denied"] += 1
+    def offensive(word: str) -> bool:
+        """Offensive or denied, or an inflection of such a word ("-ed", "-ing", ...)."""
+        return bool(({word} | {lemma for lemma, _ in wordnet.base_forms(word)}) & blocked)
+
+    # Words the reference has judged keep its verdict. The rest are predicted,
+    # apart from those settled by hand, offensive ones, and strings with no
+    # vowel (sounds and abbreviations: "pfft" only gets in with a verdict).
+    judged = sorted(w for w in candidates if w in verdicts)
+    open_words = sorted(w for w in candidates
+                        if w not in verdicts and w not in deny and w not in allow)
+    model = AcceptanceModel(candidates, verdicts, tier_of, elsewhere, enable, wordnet, badwords)
+    chance = model.chances(judged, open_words)
+
+    accepted: set[str] = set()
+    how = Counter()
+    doubt: dict[str, float] = {}  # chance the reference would decide a word the other way
+    for word in sorted(candidates | allow):
+        if word in deny:
+            how["denied by hand"] += 1
+        elif word in allow:
+            accepted.add(word)
+            how["added by hand"] += 1
+        elif word in verdicts:
+            if verdicts[word]:
+                accepted.add(word)
+            how["accepted by reference" if verdicts[word] else "rejected by reference"] += 1
+        else:
+            keep = has_vowel(word) and not offensive(word) and chance[word] >= ACCEPT_AT
+            doubt[word] = 1 - chance[word] if keep else chance[word]
+            if keep:
+                accepted.add(word)
+            how["predicted accepted" if keep else "predicted rejected"] += 1
 
     words = sorted(accepted)
+    zipf = {w: zipf_frequency(w, "en") for w in words}
+    for word in allow & accepted:
+        zipf[word] = max(zipf[word], FAIR_SEPTET_MIN_ZIPF)
 
     print("Building puzzles")
-    puzzles, puzzle_stats = build_puzzles(words, zipf)
+    puzzles, puzzle_stats = build_puzzles(words, zipf, doubt, read_reference_letter_sets(),
+                                          published_puzzles(words))
 
     print("Choosing meanings")
     extra = {}
@@ -835,19 +1123,27 @@ def main() -> None:
         "defined": len(words) - len(undefined),
         "withSentence": with_sentence,
         "severalMeanings": several,
+        "fromReference": how["accepted by reference"],
+        "predicted": how["predicted accepted"],
+        "addedByHand": how["added by hand"],
+        "referenceThrough": newest_puzzle,
         **puzzle_stats,
         "sources": list(dict.fromkeys(src["label"] for src in SOURCES.values()))
                    + ["wordfreq (corpus frequencies)"],
     }
     (OUT / "meta.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
 
-    print(f"\n  {len(words):>6} accepted words   ({dict(dropped)})")
+    print(f"\n  {len(words):>6} accepted words")
+    for reason, count in sorted(how.items(), key=lambda kv: -kv[1]):
+        print(f"  {count:>13}  {reason}")
     print(f"  {meta['defined']:>6} with a bundled definition ({len(undefined)} without)")
     print(f"  {with_sentence:>6} of those with a sample sentence "
           f"({with_sentence / max(1, meta['defined']):.0%}); {several} with more than one meaning")
     print(f"         ({releaded} words lead with the part of speech everyday text uses)")
     print(f"  {puzzle_stats['puzzles']:>6} puzzles           "
-          f"(median {puzzle_stats['medianWords']} words, {puzzle_stats['medianPoints']} points)")
+          f"(median {puzzle_stats['medianWords']} words, {puzzle_stats['medianPoints']} points, "
+          f"{puzzle_stats['kept']} kept from the published schedule)")
+    print(f"         median {puzzle_stats['medianExpectedMismatches']} expected mismatches with the reference per new puzzle")
     years = puzzle_stats["puzzles"] / 365.25
     print(f"         = {years:.1f} years of daily puzzles before the schedule repeats")
 
@@ -857,6 +1153,19 @@ def main() -> None:
         print("  " + " ".join(by_freq[:150]))
         (CACHE / "undefined.txt").write_text("\n".join(by_freq) + "\n", encoding="utf-8")
         print(f"\nFull list written to {CACHE / 'undefined.txt'}")
+
+        print("\nHand curation that overrides the reference (review after refreshing it):")
+        print("  denied, reference accepts: " + " ".join(sorted(w for w in deny if verdicts.get(w) is True)))
+        print("  allowed, reference rejects: " + " ".join(sorted(w for w in allow if verdicts.get(w) is False)))
+
+        scheduled = {w for letters in puzzles for w in puzzle_answers(letters, list(doubt))}
+        shaky = sorted(scheduled, key=lambda w: -doubt[w])[:150]
+        print("\nLeast certain predictions in scheduled puzzles (chance the reference disagrees):")
+        print("  " + " ".join(f"{w}{'+' if w in accepted else '-'}{doubt[w]:.2f}" for w in shaky))
+
+        print("\nChecking the model (5-fold cross-validation on judged words) ...")
+        accuracy = model.cross_validated_accuracy(judged)
+        print(f"  agrees with the reference on {accuracy:.1%} of words it did not train on")
 
 
 if __name__ == "__main__":

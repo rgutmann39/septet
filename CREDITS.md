@@ -5,8 +5,10 @@ Septet is built on open data. None of it costs anything to use.
 | What | Source | Used | Licence |
 |---|---|---|---|
 | Word list | [SCOWL](http://wordlist.aspell.net/) by Kevin Atkinson, packaged as [wordlist-english](https://www.npmjs.com/package/wordlist-english) | Build time; the filtered list ships in `site/data/words.txt` | SCOWL licence, see `licenses/SCOWL-Copyright.txt` |
+| Word list | [ENABLE](https://github.com/dolph/dictionary) (Enhanced North American Benchmark Lexicon) | Build time; candidates beyond SCOWL, filtered as described in the README | Public domain |
+| Acceptance model | [scikit-learn](https://scikit-learn.org/) | Build time only, to predict which candidate words to accept | BSD 3-Clause |
 | Definitions | [WordNet 3.1](https://wordnet.princeton.edu/), Princeton University | Build time; definitions ship in `site/data/defs/` | WordNet licence, see `licenses/WordNet-LICENSE.txt` |
-| Word frequencies | [wordfreq](https://github.com/rspeer/wordfreq) by Robyn Speer | Build time only, to decide which words are common enough; its data is not redistributed | Code MIT, data CC BY-SA 4.0 |
+| Word frequencies | [wordfreq](https://github.com/rspeer/wordfreq) by Robyn Speer | Build time only, as evidence of how common a word is (in English and other languages); its data is not redistributed | Code MIT, data CC BY-SA 4.0 |
 | Sample sentences | [Mozilla Common Voice](https://github.com/common-voice/common-voice) English sentence set | Build time; chosen sentences ship in `site/data/defs/` | CC0 (public domain) |
 | Part-of-speech tagger | [NLTK](https://www.nltk.org/) averaged perceptron tagger | Build time only, to check how a sentence uses a word | Apache 2.0 |
 | Pronunciation recordings | [Wikimedia Commons](https://commons.wikimedia.org/) `En-us-*.ogg` files | In the browser, when the play button is pressed; each links to its file page, which names the author and licence | Varies per recording (free licences) |

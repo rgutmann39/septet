@@ -1,5 +1,6 @@
-# Ordinary words that the profanity source flags. Listing a word here keeps it
-# (and its inflections) in the dictionary. One word per line.
+# Ordinary words that the profanity source flags. The profanity check only
+# applies to words the reference list has not judged; listing a word here
+# exempts it (and its inflections) from that check. One word per line.
 anal
 bloody
 butt
