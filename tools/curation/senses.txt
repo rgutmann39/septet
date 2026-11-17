@@ -6,6 +6,12 @@
 # than furniture). A line here makes the build use the sense whose definition
 # contains the phrase. Inflected forms follow along ("made" uses the pin for
 # "make"). The build stops with an error if a phrase matches nothing.
+#
+# Several phrases separated by "|" give the word exactly those meanings on its
+# card, in that order, most common first:
+#     mole: burrowing mammal | congenital pigmented spot
+# Without that, further meanings are added only where WordNet's counts show
+# they are in real use.
 
 accept: receive willingly something given or offered
 active: disposed to take action
@@ -14,9 +20,9 @@ alpaca: domesticated llama
 annual: occurring or payable every year
 apply: ask (for something)
 award: a tangible symbol signifying approval
-bank: a financial institution that accepts deposits
-bat: nocturnal mouselike mammal
-bear: massive plantigrade
+bank: a financial institution that accepts deposits | sloping land
+bark: tough protective covering of the woody stems | the sound made by a dog
+bear: massive plantigrade | put up with something or somebody unpleasant
 benefit: something that aids or promotes well-being
 born: brought into existence
 brand: a name given to a product or service
@@ -28,11 +34,14 @@ charge: the price charged
 club: a formal association of people
 college: an institution of higher education
 county: the largest administrative district within a state
+crane: lifts and moves heavy objects | large long-necked wading bird
 current: occurring in or belonging to the present time
+date: the specified day of the month | a meeting arranged in advance | sweet edible fruit of the date palm
 double: consisting of or involving two parts
 draw: make a mark or lines on a surface
 duck: web-footed
 exchange: the act of changing one thing for another
+fair: free from favoritism | a traveling show
 file: a set of related records
 fine: being satisfactory or in satisfactory condition
 flight: an instance of traveling by air
@@ -42,23 +51,35 @@ gold: a soft yellow malleable
 heart: the hollow muscular organ
 image: a visual representation
 jack: tool for exerting pressure or lifting
+kind: a category of things distinguished | having or showing a tender and considerate
 labor: productive work
 land: the solid part of the earth's surface
 lucky: having or bringing good fortune
 make: make or cause to be or to become
+match: a formal contest in which two or more persons or teams | be compatible, similar or consistent | lighter consisting of a thin piece of wood
 million: the number that is represented as a one followed by 6 zeros
+mint: any north temperate plant of the genus mentha | a candy that is flavored with a mint oil | a plant where money is coined
 mobile: moving or capable of moving readily
-mole: burrowing mammal
+mole: burrowing mammal | a small congenital pigmented spot
+nail: a thin pointed piece of metal that is hammered | horny plate covering and protecting
 online: connected to a computer network
 option: one of a number of things from which only one can be chosen
+organ: a fully differentiated structural and functional unit | wind instrument whose sound is produced
+palm: the inner surface of the hand | any plant of the family palmae
 papaya: melon-like tropical fruit
 partner: an associate in an activity
+pen: a writing implement with a point from which ink flows | an enclosure for confining livestock
+pitch: the property of sound that varies | the act of throwing a baseball
 plant: a living organism lacking the power of locomotion
+pound: 16 ounces avoirdupois | hit hard with the hand | the basic unit of money in great britain
 price: the amount of money needed to purchase something
 profile: an outline of something
+pupil: a learner who is enrolled in an educational institution | the contractile aperture in the center of the iris
 queen: a female sovereign ruler
 rather: to some (great or small) extent
-table: a piece of furniture having a smooth flat top
+right: free from error | being or located on or directed toward the side of the body to the east | an abstract idea of that which is due
+ring: jewelry consisting of a circlet | sound loudly and sonorously
+table: a piece of furniture having a smooth flat top | a set of data arranged in rows and columns
 take: get into one's hands
 thing: a separate and self-contained entity
 title: the name of a work of art

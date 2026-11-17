@@ -59,17 +59,27 @@ test('createPuzzle agrees with the schedule on a sample puzzle', () => {
 test('definitions: almost every word has one, in the right shard', () => {
   const files = readdirSync(new URL('defs/', data)).filter((name) => name.endsWith('.json'));
   let defined = 0;
+  let withSentence = 0;
   const known = new Set(words);
   for (const file of files) {
     const shard = JSON.parse(readFileSync(new URL(`defs/${file}`, data), 'utf8'));
     for (const [word, entry] of Object.entries(shard)) {
       assert.equal(word[0], file[0], `${word} is in ${file}`);
       assert.ok(known.has(word), `${word} is defined but not in the dictionary`);
-      assert.ok(entry.pos && entry.definition, `${word} has an incomplete entry`);
+      const meanings = [entry, ...(entry.more ?? [])];
+      assert.ok(meanings.length <= 3, `${word} has too many meanings`);
+      for (const meaning of meanings) {
+        assert.ok(meaning.pos && meaning.definition, `${word} has an incomplete entry`);
+        // A capital letter, or an opening quotation mark: 'Come and visit me,' he said amiably.
+        if ('example' in meaning) assert.match(meaning.example, /^['"A-Z].{6,}/, `${word} sample sentence`);
+        assert.ok(!Object.keys(meaning).some((key) => key.startsWith('_')), `${word} leaks working data`);
+      }
+      if (entry.example) withSentence += 1;
       defined += 1;
     }
   }
   assert.ok(defined / words.length > 0.97, `only ${defined} of ${words.length} words are defined`);
+  assert.ok(withSentence / defined > 0.8, `only ${withSentence} of ${defined} definitions have a sample sentence`);
 });
 
 test('pictures: every bundled entry belongs to a dictionary word', { skip: !existsSync(new URL('pics/', data)) }, () => {

@@ -1,0 +1,33 @@
+# Sample sentences written by hand.  Format:  word: sentence
+#
+# The build normally takes a sentence from WordNet or from an open corpus.
+# Use this file where that picks a poor one or finds none. A plain line sets
+# the sentence for the word's first meaning; "word#2:" sets it for the second
+# meaning on its card, "word#3:" for the third.
+
+alpaca: The alpaca chewed slowly while the children petted its soft fleece.
+crane: A crane lifted the steel beams to the top of the building.
+crane#2: A crane stood motionless in the shallow water.
+date#3: She chopped a date into her oatmeal.
+kind#2: It was kind of you to help us move.
+kind: What kind of music do you like?
+liberal: The senator was known as a liberal on social issues.
+mint: She picked fresh mint from the garden for the tea.
+mint#2: He took a mint from the bowl by the door.
+mint#3: The mint produced a new quarter for each state.
+mole: A mole had tunneled across the lawn overnight.
+mole#2: The doctor checked the mole on her shoulder.
+nail#2: She painted each nail a different color.
+palm#2: A palm swayed over the beach.
+pitch: The singer could not reach the high pitch of the last note.
+pitch#2: The first pitch was a fastball down the middle.
+pound: The recipe calls for a pound of butter.
+pound#3: The ticket to the museum cost one pound.
+pupil#2: The pupil of the eye widens in the dark.
+ring: He slipped the ring onto her finger.
+ring#2: The church bells ring every Sunday morning.
+right: You were right about the weather.
+right#3: Everyone has the right to a fair trial.
+train: We took the train into the city.
+watch: We stayed up late to watch the meteor shower.
+watch#3: He checked his watch and hurried to the gate.

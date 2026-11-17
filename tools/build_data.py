@@ -11,10 +11,11 @@ Everything the browser needs is generated here, once, and committed under
 
 Sources (all free / openly licensed, see CREDITS.md):
 
-    SCOWL      word lists graded by how common a word is
-    wordfreq   corpus frequencies, used to drop obscure words
-    WordNet    definitions, ordered by how often each sense is used
-    badwords   profanity list, used to drop offensive words
+    SCOWL         word lists graded by how common a word is
+    wordfreq      corpus frequencies, used to drop obscure words
+    WordNet       definitions, ordered by how often each sense is used
+    Common Voice  short everyday sentences, used as sample sentences
+    badwords      profanity list, used to drop offensive words
 
 Usage:
     pip install -r tools/requirements.txt
@@ -40,6 +41,8 @@ from pathlib import Path
 
 from wordfreq import zipf_frequency
 
+from sentences import SentenceBank, stems
+
 ROOT = Path(__file__).resolve().parent.parent
 CACHE = Path(__file__).resolve().parent / ".cache"
 CURATION = Path(__file__).resolve().parent / "curation"
@@ -64,6 +67,21 @@ SOURCES = {
         "url": "https://registry.npmjs.org/badwords-list/-/badwords-list-2.0.1-4.tgz",
         "sha256": "7258b2840d03f6d8e118dbe137ed18e6fc022f58d976dab8498e4b7d252412c0",
         "label": "badwords-list 2.0.1-4",
+    },
+    "sentences_wiki": {
+        "url": "https://raw.githubusercontent.com/common-voice/common-voice/main/server/data/en/wiki.en.txt",
+        "sha256": "438e55e8bc91dfa6cbe098a7233702c6b177c5ae07137a01d66b9c75c9789ae5",
+        "label": "Mozilla Common Voice sentences (CC0)",
+    },
+    "sentences_misc": {
+        "url": "https://raw.githubusercontent.com/common-voice/common-voice/main/server/data/en/sentence-collector.txt",
+        "sha256": "31ac8e200449ebd7aee4a8c6bd16d4dafd076cf11f7c3efe1035f0283712d136",
+        "label": "Mozilla Common Voice sentences (CC0)",
+    },
+    "tagger": {
+        "url": "https://raw.githubusercontent.com/nltk/nltk_data/gh-pages/packages/taggers/averaged_perceptron_tagger_eng.zip",
+        "sha256": "6025f530624335c67d6547d44757b357b4e79bae030a0383e9887a92c1718f0b",
+        "label": "NLTK part-of-speech tagger",
     },
 }
 
@@ -91,6 +109,14 @@ PUZZLE_MAX_POINTS = 260
 FAIR_SEPTET_MIN_ZIPF = 2.6
 SCHEDULE_SEED = 20261101
 SCHEDULE_EPOCH = "2026-11-01"
+
+# A word gets more than one meaning on its card only when the others are in
+# real use too. WordNet's usage counts decide: another reading of the word (a
+# different part of speech or base form) needs a few sightings; a second sense
+# of the same reading also has to hold a fair share next to the first.
+MIN_SENSE_COUNT = 5
+SAME_READING_SHARE = 0.25
+MAX_SENSES = 3
 
 POS_NAMES = {"n": "noun", "v": "verb", "a": "adjective", "r": "adverb"}
 # Senses that are rarely the one meant when nothing says otherwise: a field
@@ -139,17 +165,17 @@ def read_curation(filename: str) -> set[str]:
     return words
 
 
-def read_pins() -> dict[str, str]:
-    """Read curation/senses.txt: 'word: phrase found in the sense to use'."""
+def read_pins() -> dict[str, list[str]]:
+    """Read curation/senses.txt: 'word: phrase' or 'word: phrase | phrase'."""
     path = CURATION / "senses.txt"
-    pins: dict[str, str] = {}
+    pins: dict[str, list[str]] = {}
     if not path.exists():
         return pins
     for line in path.read_text(encoding="utf-8").splitlines():
         line = line.split("#", 1)[0].strip()
         if line:
-            word, _, phrase = line.partition(":")
-            pins[word.strip().lower()] = phrase.strip().lower()
+            word, _, phrases = line.partition(":")
+            pins[word.strip().lower()] = [p.strip().lower() for p in phrases.split("|") if p.strip()]
     return pins
 
 
@@ -316,20 +342,8 @@ class WordNet:
                     found.append((lemma, pos))
         return found
 
-    def most_common_sense(self, word: str, pins: dict[str, str] | None = None) -> dict | None:
-        """The sense of ``word`` a reader is most likely to mean.
-
-        WordNet counts how often each sense occurs in hand-tagged text, which is
-        the main signal. The counts come from a small, dated corpus, so they are
-        backed up by structure: a sense where the word is the synset's own
-        headword gets a nudge over one where it is a synonym of something else,
-        earlier senses over later ones, and names of people and places are
-        skipped.
-
-        ``pins`` (curation/senses.txt) overrides the choice: a pinned word, or a
-        form of one, only considers the sense containing the pinned phrase.
-        """
-        pins = pins or {}
+    def readings(self, word: str) -> list[tuple[str, str, bool]]:
+        """(lemma, part of speech, loosely derived?) for each way to read a word."""
         exact = [(lemma, pos, False) for lemma, pos in self.base_forms(word, rules=False)]
         ruled = [(lemma, pos, False) for lemma, pos in self.base_forms(word, exact=False)]
         # A word WordNet lists in its own right ("owner") is not read as a
@@ -337,77 +351,289 @@ class WordNet:
         # compete: "going" is far more often a form of "go" than an adjective.
         if any(self.common(lemma, pos) for lemma, pos, _ in exact):
             ruled = [r for r in ruled if r[1] != "a"]
-        readings = exact + ruled
-        if not readings:
-            readings = [(lemma, pos, True) for lemma, pos in self.derived_from(word)]
+        found = exact + ruled
+        return found or [(lemma, pos, True) for lemma, pos in self.derived_from(word)]
 
-        def pick(use_lemma_pins: bool, allow_capitalized: bool):
-            best = None
-            best_score = None
-            for lemma, pos, loose in readings:
-                phrase = pins.get(word) or (pins.get(lemma) if use_lemma_pins else None)
-                rank = 0
-                for sense_pos, offset, number, count in sorted(self.senses[lemma], key=lambda s: s[2]):
-                    if sense_pos != pos:
-                        continue
-                    synset = self.synsets[(pos, offset)]
-                    if synset["instance"]:
-                        continue  # a particular person or place
-                    forms = self.forms(synset)
-                    own = next((f for f in forms if f.lower() == lemma), lemma)
-                    if own != own.lower() and not allow_capitalized:
-                        continue  # "China" when the word is "china"
-                    rank += 1
-                    if phrase and phrase not in synset["gloss"].lower():
-                        continue
-                    evidence = max(0, count - 2)  # one or two sightings prove little
-                    score = 2.0 * math.log2(1 + evidence)
-                    score += 2.5 if forms[0].lower() == lemma else 0
-                    score -= min(rank - 1, 4)
-                    score += POS_BONUS[pos]
-                    score += 1 if lemma == word else 0
-                    if evidence == 0 and SIDE_SENSE.match(synset["gloss"]):
-                        score -= 3  # a specialist or by-product sense
-                    if best_score is None or score > best_score:
-                        best_score, best = score, (lemma, pos, offset, loose)
-            return best
+    def candidates(self, word: str, allow_capitalized: bool = False) -> list[dict]:
+        """Every sense the word could have, each with a score.
 
-        # Pins on a base form are a preference ("made" follows "make"); when
-        # they leave nothing ("banked" is a verb, the pin for "bank" a noun) the
-        # ordinary choice applies. Capitalized senses ("Brie") are a last resort.
-        best = pick(True, False) or pick(False, False) or pick(False, True)
-        if best is None:
-            return None
-        lemma, pos, offset, loose = best
-        inflected = not loose
-        synset = self.synsets[(pos, offset)]
-        definition, example = split_gloss(synset["gloss"], prefer=(word, lemma))
+        WordNet counts how often each sense occurs in hand-tagged text, which is
+        the main signal. The counts come from a small, dated corpus, so they are
+        backed up by structure: a sense where the word is the synset's own
+        headword gets a nudge over one where it is a synonym of something else,
+        earlier senses over later ones, and names of people and places are
+        skipped.
+        """
+        found = []
+        for lemma, pos, loose in self.readings(word):
+            rank = 0
+            for sense_pos, offset, _, count in sorted(self.senses[lemma], key=lambda s: s[2]):
+                if sense_pos != pos:
+                    continue
+                synset = self.synsets[(pos, offset)]
+                if synset["instance"]:
+                    continue  # a particular person or place
+                forms = self.forms(synset)
+                own = next((f for f in forms if f.lower() == lemma), lemma)
+                if own != own.lower() and not allow_capitalized:
+                    continue  # "China" when the word is "china"
+                rank += 1
+                evidence = max(0, count - 2)  # one or two sightings prove little
+                score = 2.0 * math.log2(1 + evidence)
+                score += 2.5 if forms[0].lower() == lemma else 0
+                score -= min(rank - 1, 4)
+                score += POS_BONUS[pos]
+                score += 1 if lemma == word else 0
+                if pos == "v" and lemma != word and word.endswith(("ing", "ed")):
+                    score += 1.5  # "mending" is the verb far more often than the noun
+                if evidence == 0 and SIDE_SENSE.match(synset["gloss"]):
+                    score -= 3  # a specialist or by-product sense
+                found.append({"lemma": lemma, "pos": pos, "offset": offset, "loose": loose,
+                              "count": count, "score": score, "synset": synset})
+        return found
+
+    @staticmethod
+    def _best(pool: list[dict], phrase: str | None = None) -> dict | None:
+        best = None
+        for sense in pool:
+            if phrase and phrase not in sense["synset"]["gloss"].lower():
+                continue
+            if best is None or sense["score"] > best["score"]:
+                best = sense
+        return best
+
+    def senses_for(self, word: str, pins: dict[str, list[str]] | None = None,
+                   prefer_pos: str | None = None) -> list[dict]:
+        """The meanings of ``word`` in common use, most common first.
+
+        The first is the sense a reader is most likely to mean. Others follow
+        only if WordNet's usage counts show they are in real use too (see
+        ``other_common_senses``).
+
+        ``pins`` (curation/senses.txt) overrides the choice. A pinned word uses
+        the sense containing its phrase; with several phrases it gets exactly
+        those senses, in that order. Forms of a pinned word follow its first pin.
+
+        ``prefer_pos`` ("noun", "verb", ...) makes the first sense one of that
+        part of speech when the word has one.
+        """
+        pins = pins or {}
+        own = pins.get(word, [])
+        pool = self.candidates(word)
+        if prefer_pos and not own:
+            preferred = [c for c in pool if POS_NAMES[c["pos"]] == prefer_pos]
+            first = self._best(preferred)
+            if first is not None:
+                return [self.entry(word, sense, pool)
+                        for sense in [first, *self.other_common_senses(first, pool)]]
+        if own:
+            first = self._best(pool, own[0])
+        else:
+            # A pin on a base form is a preference ("made" follows "make"); when
+            # it leaves nothing ("banked" is a verb, the pin for "bank" a noun)
+            # the ordinary choice applies.
+            following = [c for c in pool if not pins.get(c["lemma"])
+                         or pins[c["lemma"]][0] in c["synset"]["gloss"].lower()]
+            first = self._best(following) or self._best(pool)
+        if first is None:
+            # Capitalized senses ("Brie") are a last resort.
+            pool = self.candidates(word, allow_capitalized=True)
+            first = self._best(pool, own[0] if own else None)
+        if first is None:
+            return []
+
+        chosen = [first]
+        if len(own) > 1:
+            for phrase in own[1:]:
+                extra = self._best([c for c in pool if c not in chosen], phrase)
+                if extra:
+                    chosen.append(extra)
+        else:
+            chosen += self.other_common_senses(first, pool)
+        return [self.entry(word, sense, pool) for sense in chosen]
+
+    def other_common_senses(self, first: dict, pool: list[dict]) -> list[dict]:
+        """Further senses in real use, by how often WordNet saw each."""
+        def reading(sense: dict) -> tuple[str, str]:
+            return sense["lemma"], sense["pos"]
+
+        by_reading: dict[tuple[str, str], list[dict]] = defaultdict(list)
+        for sense in pool:
+            by_reading[reading(sense)].append(sense)
+
+        eligible = []
+        for key, members in by_reading.items():
+            if key == reading(first):
+                # More senses of the same reading: each must hold its own
+                # beside the most used one ("light" the lamp beside the glow).
+                top = max(m["count"] for m in members)
+                eligible += [m for m in members if m is not first
+                             and m["count"] >= max(MIN_SENSE_COUNT, SAME_READING_SHARE * top)]
+            else:
+                # Another reading altogether ("left" the direction beside
+                # "left" from "leave"): its leading sense, if it is in use.
+                lead = self._best(members)
+                if lead["count"] >= MIN_SENSE_COUNT:
+                    eligible.append(lead)
+
+        chosen: list[dict] = []
+        used = Counter([reading(first)])
+        for sense in sorted(eligible, key=lambda m: -m["count"]):
+            if len(chosen) + 1 >= MAX_SENSES:
+                break
+            if used[reading(sense)] >= 2:
+                continue
+            if any(self.near_duplicate(sense, other) for other in [first, *chosen]):
+                continue
+            chosen.append(sense)
+            used[reading(sense)] += 1
+        return chosen
+
+    @staticmethod
+    def near_duplicate(a: dict, b: dict) -> bool:
+        """WordNet splits hairs; two senses a reader would call one meaning."""
+        if (a["pos"], a["offset"]) == (b["pos"], b["offset"]):
+            return True
+        if a["pos"] == b["pos"] == "n" and a["synset"]["hypernym"] \
+                and a["synset"]["hypernym"] == b["synset"]["hypernym"]:
+            return True  # two kinds of the same thing
+        words_a = stems(split_gloss(a["synset"]["gloss"])[0])
+        words_b = stems(split_gloss(b["synset"]["gloss"])[0])
+        shared = len(words_a & words_b)
+        return shared >= 0.4 * len(words_a | words_b) or shared == min(len(words_a), len(words_b)) > 0
+
+    def entry(self, word: str, sense: dict, pool: list[dict]) -> dict:
+        """The card entry for one sense. Keys starting with '_' are working
+        data for choosing a sample sentence and are not written out."""
+        lemma, pos, synset = sense["lemma"], sense["pos"], sense["synset"]
+        definition, examples = split_gloss(synset["gloss"])
         entry = {"pos": POS_NAMES[pos], "definition": definition}
-        if example:
-            entry["example"] = example
         if lemma != word:
             # "lemma": word is an inflection of it. "from": word is built on it.
-            entry["lemma" if inflected else "from"] = lemma
-        if pos == "n" and synset["hypernym"]:
-            parent = self.synsets.get(synset["hypernym"])
-            if parent:
+            entry["from" if sense["loose"] else "lemma"] = lemma
+        meaning = stems(definition) | stems(synset["words"])
+        parent = self.synsets.get(synset["hypernym"]) if synset["hypernym"] else None
+        if parent:
+            meaning |= stems(split_gloss(parent["gloss"])[0]) | stems(parent["words"])
+            if pos == "n":
                 entry["kind"] = parent["words"][0]
+        for example in examples:
+            meaning |= stems(example)
+        entry["_examples"] = examples
+        entry["_meaning"] = meaning - stems([word, lemma])
+        entry["_count"] = sense["count"]
+        # Can a sentence from the corpus be assumed to use this sense? Yes if
+        # the reading has no other sense; if it has only one or two and none is
+        # in real use; or if this sense clearly dominates the rest. A word with
+        # many unranked senses ("mole", "pitch") gives no such assurance.
+        others = [c["count"] for c in pool
+                  if (c["lemma"], c["pos"]) == (lemma, pos) and c is not sense]
+        entry["_usual"] = (
+            not others
+            or (len(others) <= 2 and max(others) < MIN_SENSE_COUNT)
+            or (sense["count"] >= 10 and sense["count"] >= 2 * max(others)))
         return entry
 
 
-def split_gloss(gloss: str, prefer: tuple[str, ...]) -> tuple[str, str | None]:
-    """Split a WordNet gloss into its definition and one example sentence."""
+def split_gloss(gloss: str) -> tuple[str, list[str]]:
+    """Split a WordNet gloss into its definition and its example phrases."""
     definition, _, rest = gloss.partition('; "')
-    examples = re.findall(r'"([^"]+)"', '"' + rest) if rest else []
-    definition = definition.strip().rstrip(";:").strip()
-    # Glosses share examples between synonyms; only one that actually uses
-    # this word is worth showing.
-    example = None
-    for candidate in examples:
-        if any(re.search(rf"\b{re.escape(p)}", candidate, re.I) for p in prefer):
-            example = candidate.strip()
-            break
-    return definition, example
+    examples = [e.strip() for e in re.findall(r'"([^"]+)"', '"' + rest)] if rest else []
+    return definition.strip().rstrip(";:").strip(), examples
+
+
+# --------------------------------------------------------------------------
+# Sample sentences
+# --------------------------------------------------------------------------
+def load_sentence_bank(words: list[str], senses: dict[str, list[dict]], tier_of: dict[str, int],
+                       blocked: set[str]) -> SentenceBank:
+    """Index the sentence corpus for every word and every base form."""
+    import nltk
+
+    tagger_dir = CACHE / "nltk_data" / "taggers"
+    if not (tagger_dir / "averaged_perceptron_tagger_eng").exists():
+        tagger_dir.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(io.BytesIO(fetch("tagger"))) as zf:
+            zf.extractall(tagger_dir)
+    nltk.data.path.insert(0, str(CACHE / "nltk_data"))
+
+    targets = set(words)
+    for entries in senses.values():
+        targets.update(e.get("lemma") or e.get("from") or "" for e in entries)
+    targets.discard("")
+    common = {w for w, tier in tier_of.items() if tier <= 60 and w.islower()}
+    lines = (line for name in ("sentences_wiki", "sentences_misc")
+             for line in fetch(name).decode("utf-8").splitlines())
+    return SentenceBank(lines, targets, common, blocked, lambda w: zipf_frequency(w, "en"))
+
+
+def tidy_sentence(text: str) -> str:
+    text = " ".join(text.replace("`", "'").split())
+    text = text[0].upper() + text[1:]
+    if len(text.split()) >= 4 and text[-1] not in ".!?":
+        text += "."
+    return text
+
+
+def read_sentences() -> dict[tuple[str, int], str]:
+    """Read curation/sentences.txt: 'word: sentence' or 'word#2: sentence'."""
+    path = CURATION / "sentences.txt"
+    written: dict[tuple[str, int], str] = {}
+    if not path.exists():
+        return written
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.strip() and not line.lstrip().startswith("#"):
+            key, _, sentence = line.partition(":")
+            word, _, number = key.strip().lower().partition("#")
+            written[(word, int(number or 1) - 1)] = sentence.strip()
+    return written
+
+
+def choose_sentence(word: str, index: int, senses: list[dict], bank: SentenceBank,
+                    written: dict[tuple[str, int], str]) -> str | None:
+    """One sample sentence showing ``word`` used in its ``index``-th sense.
+
+    In order: a sentence written by hand (curation/sentences.txt); WordNet's
+    own example when it is a complete sentence with this exact word, since it
+    was written for this sense; a sentence from the corpus with the word in the
+    right part of speech. A corpus sentence cannot be assumed to use the right
+    sense of a word that has several, so unless this sense clearly dominates it
+    must share vocabulary with this sense and not with the others. Failing all
+    that, a WordNet phrase, or nothing: no sentence beats a misleading one.
+    """
+    sense = senses[index]
+    if (word, index) in written:
+        return written[(word, index)]
+    if sense.get("example"):
+        return sense["example"]  # hand-written entry
+    base = sense.get("lemma") or sense.get("from")
+    examples = sense.get("_examples", [])
+
+    def has(text: str, form: str, whole: bool) -> bool:
+        return bool(re.search(rf"\b{re.escape(form)}" + (r"\b" if whole else ""), text, re.I))
+
+    exact = [e for e in examples if has(e, word, True)]
+    related = [e for e in examples if has(e, word, False) or (base and has(e, base, False))]
+
+    for example in exact:
+        if bank.sentence_like(example, word):
+            return example
+    # Only senses sharing this part of speech can be confused with this one;
+    # the corpus sentence is already known to use the right part of speech.
+    meaning = sense.get("_meaning", stems(sense["definition"]))
+    rivals = [s.get("_meaning", stems(s["definition"])) for s in senses
+              if s is not sense and s["pos"] == sense["pos"]]
+    found = bank.pick(word, sense["pos"], meaning, rivals,
+                      must_fit=bool(rivals) or not sense.get("_usual", True))
+    if found:
+        return found
+    for pool in (exact, [e for e in related if bank.sentence_like(e, base or word)], related):
+        if pool:
+            return pool[0]
+    if base and index == 0 and sense.get("_usual", True):
+        # Last resort for a rare inflection: a sentence with its base form.
+        return bank.pick(base, sense["pos"])
+    return None
 
 
 # --------------------------------------------------------------------------
@@ -525,27 +751,69 @@ def main() -> None:
     print("Building puzzles")
     puzzles, puzzle_stats = build_puzzles(words, zipf)
 
-    print("Writing definitions")
+    print("Choosing meanings")
     extra = {}
     extra_path = CURATION / "definitions.json"
     if extra_path.exists():
         extra = json.loads(extra_path.read_text(encoding="utf-8"))
-    shards: dict[str, dict] = defaultdict(dict)
-    undefined = []
     pins = read_pins()
     bad_pins: list[str] = []
+    senses: dict[str, list[dict]] = {}
+    undefined = []
     for word in words:
-        entry = extra.get(word) or wordnet.most_common_sense(word, pins)
-        if word in pins and word not in extra and (
-                entry is None or pins[word] not in entry["definition"].lower()):
-            bad_pins.append(f"  {word}: no sense mentions '{pins[word]}'")
-        if entry is None:
-            undefined.append(word)
+        if word in extra:
+            # Hand-written: the entry itself, then any under its "more" key.
+            written = dict(extra[word])
+            senses[word] = [written, *written.pop("more", [])]
             continue
-        shards[word[0]][word] = entry
+        found = wordnet.senses_for(word, pins)
+        for i, phrase in enumerate(pins.get(word, [])):
+            if i >= len(found) or phrase not in found[i]["definition"].lower():
+                bad_pins.append(f"  {word}: no sense mentions '{phrase}'")
+        if found:
+            senses[word] = found
+        else:
+            undefined.append(word)
 
     if bad_pins:
         sys.exit("curation/senses.txt has pins that match nothing:\n" + "\n".join(bad_pins))
+
+    print("Choosing sample sentences")
+    bank = load_sentence_bank(words, senses, tier_of, blocked)
+
+    # WordNet's counts are thin for many words. Where it has next to nothing to
+    # go on and everyday text clearly uses the word as another part of speech
+    # ("liberal" as an adjective, not a kind of person), lead with that.
+    releaded = 0
+    for word, entries in senses.items():
+        if word in extra or word in pins or entries[0].get("_count", 99) > 4:
+            continue
+        shares = bank.pos_shares(word)
+        usual = max(shares, key=shares.get, default=None)
+        if usual and usual != entries[0]["pos"] and shares[usual] >= 0.6:
+            again = wordnet.senses_for(word, pins, prefer_pos=usual)
+            if again and again[0]["pos"] == usual:
+                senses[word] = again
+                releaded += 1
+
+    written = read_sentences()
+    unknown = sorted({word for word, _ in written} - set(senses))
+    if unknown:
+        sys.exit("curation/sentences.txt names words that are not in the dictionary: " + ", ".join(unknown))
+    shards: dict[str, dict] = defaultdict(dict)
+    with_sentence = 0
+    for word, entries in senses.items():
+        chosen = [choose_sentence(word, i, entries, bank, written) for i in range(len(entries))]
+        cards = []
+        for entry, sentence in zip(entries, chosen):
+            card = {key: value for key, value in entry.items() if not key.startswith("_")}
+            if sentence:
+                card["example"] = tidy_sentence(sentence)
+            cards.append(card)
+        with_sentence += "example" in cards[0]
+        if len(cards) > 1:
+            cards[0]["more"] = cards[1:]
+        shards[word[0]][word] = cards[0]
 
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "defs").mkdir(exist_ok=True)
@@ -561,16 +829,23 @@ def main() -> None:
         json.dumps({"epoch": SCHEDULE_EPOCH, "puzzles": puzzles}, separators=(",", ":")) + "\n",
         encoding="utf-8",
     )
+    several = sum(1 for entries in senses.values() if len(entries) > 1)
     meta = {
         "words": len(words),
         "defined": len(words) - len(undefined),
+        "withSentence": with_sentence,
+        "severalMeanings": several,
         **puzzle_stats,
-        "sources": [src["label"] for src in SOURCES.values()] + ["wordfreq (corpus frequencies)"],
+        "sources": list(dict.fromkeys(src["label"] for src in SOURCES.values()))
+                   + ["wordfreq (corpus frequencies)"],
     }
     (OUT / "meta.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
 
     print(f"\n  {len(words):>6} accepted words   ({dict(dropped)})")
     print(f"  {meta['defined']:>6} with a bundled definition ({len(undefined)} without)")
+    print(f"  {with_sentence:>6} of those with a sample sentence "
+          f"({with_sentence / max(1, meta['defined']):.0%}); {several} with more than one meaning")
+    print(f"         ({releaded} words lead with the part of speech everyday text uses)")
     print(f"  {puzzle_stats['puzzles']:>6} puzzles           "
           f"(median {puzzle_stats['medianWords']} words, {puzzle_stats['medianPoints']} points)")
     years = puzzle_stats["puzzles"] / 365.25

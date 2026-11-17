@@ -1,6 +1,8 @@
 {
   "words": 17310,
   "defined": 17070,
+  "withSentence": 14902,
+  "severalMeanings": 1464,
   "puzzles": 1785,
   "medianWords": 36,
   "medianPoints": 166,
@@ -8,6 +10,8 @@
     "SCOWL (via wordlist-english 1.2.1)",
     "Princeton WordNet 3.1",
     "badwords-list 2.0.1-4",
+    "Mozilla Common Voice sentences (CC0)",
+    "NLTK part-of-speech tagger",
     "wordfreq (corpus frequencies)"
   ]
 }
