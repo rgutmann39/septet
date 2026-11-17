@@ -6,8 +6,10 @@ letters can repeat, and there is never an S.
 
 It plays by the rules of the seven-letter "word hive" genre made popular by
 the New York Times Spelling Bee, with its own name, look, ranks, word list and
-puzzles. Tap any word you have found (or any of yesterday's answers) to see
-its most common meaning and a picture.
+puzzles. Tap any word you have found (or any of yesterday's answers) to hear
+it spoken and see what it means, with a sample sentence and a picture.
+
+**Play it at <https://rgutmann39.github.io/septet/>.**
 
 There is no server and nothing to pay for: the game is a folder of static
 files.
