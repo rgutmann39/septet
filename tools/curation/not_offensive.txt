@@ -1,0 +1,21 @@
+# Ordinary words that the profanity source flags. Listing a word here keeps it
+# (and its inflections) in the dictionary. One word per line.
+anal
+bloody
+butt
+cock        # a rooster; to cock a hat
+damn
+dogging     # "dogging his footsteps"
+ejaculate
+flange
+hell
+knob
+labia
+muff
+pawn
+poop
+prick
+rectum
+rimming
+vagina
+vulva

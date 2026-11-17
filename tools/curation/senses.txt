@@ -1,0 +1,69 @@
+# Pin the meaning shown for a word.  Format:  word: phrase
+#
+# The build normally picks the sense WordNet records as most used. Its counts
+# come from a small, older corpus, so for some everyday words the pick is not
+# the meaning most people think of first ("table" as rows and columns rather
+# than furniture). A line here makes the build use the sense whose definition
+# contains the phrase. Inflected forms follow along ("made" uses the pin for
+# "make"). The build stops with an error if a phrase matches nothing.
+
+accept: receive willingly something given or offered
+active: disposed to take action
+agent: a representative who acts on behalf of other persons
+annual: occurring or payable every year
+apply: ask (for something)
+award: a tangible symbol signifying approval
+bank: a financial institution that accepts deposits
+bat: nocturnal mouselike mammal
+bear: massive plantigrade
+benefit: something that aids or promotes well-being
+born: brought into existence
+brand: a name given to a product or service
+capital: a seat of government
+cell: the basic structural and functional unit of all organisms
+challenge: a demanding or stimulating situation
+channel: a television station
+charge: the price charged
+club: a formal association of people
+college: an institution of higher education
+county: the largest administrative district within a state
+current: occurring in or belonging to the present time
+double: consisting of or involving two parts
+draw: make a mark or lines on a surface
+duck: web-footed
+exchange: the act of changing one thing for another
+file: a set of related records
+fine: being satisfactory or in satisfactory condition
+flight: an instance of traveling by air
+frank: characterized by directness
+function: what something is used for
+gold: a soft yellow malleable
+heart: the hollow muscular organ
+image: a visual representation
+jack: tool for exerting pressure or lifting
+labor: productive work
+land: the solid part of the earth's surface
+lucky: having or bringing good fortune
+make: make or cause to be or to become
+million: the number that is represented as a one followed by 6 zeros
+mobile: moving or capable of moving readily
+mole: burrowing mammal
+online: connected to a computer network
+option: one of a number of things from which only one can be chosen
+partner: an associate in an activity
+plant: a living organism lacking the power of locomotion
+price: the amount of money needed to purchase something
+profile: an outline of something
+queen: a female sovereign ruler
+rather: to some (great or small) extent
+table: a piece of furniture having a smooth flat top
+take: get into one's hands
+thing: a separate and self-contained entity
+title: the name of a work of art
+total: the whole amount
+trial: the determination of a person's innocence or guilt
+value: the quality (positive or negative) that renders something
+wake: stop sleeping
+weird: strikingly odd or unusual
+world: everything that exists anywhere
+wrong: not correct

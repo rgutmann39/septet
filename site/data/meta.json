@@ -1,0 +1,13 @@
+{
+  "words": 17310,
+  "defined": 17070,
+  "puzzles": 1785,
+  "medianWords": 36,
+  "medianPoints": 166,
+  "sources": [
+    "SCOWL (via wordlist-english 1.2.1)",
+    "Princeton WordNet 3.1",
+    "badwords-list 2.0.1-4",
+    "wordfreq (corpus frequencies)"
+  ]
+}

@@ -1,0 +1,37 @@
+# Words added to the dictionary by hand: everyday words the automatic rules
+# miss because the source list files them as rare. One word per line.
+frittata
+genomic
+manmade
+mojo
+pogo
+tahini
+tiki
+trebuchet
+acai
+babka
+biryani
+boba
+cafe
+challah
+chile
+falafel
+fiance
+fiancee
+gelato
+habanero
+intel
+jalapeno
+kimchi
+matcha
+mojito
+nana
+nonillion
+offline
+paleo
+panini
+pierogi
+ramen
+taquito
+vlog
+wonton
