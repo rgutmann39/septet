@@ -705,6 +705,9 @@ function bindEvents() {
     dialog.addEventListener('close', () => {
       closeCard();
       document.body.append(card);
+      // A dialog opened on page load has no opener to hand focus back to, so
+      // focus would stay on its (now hidden) close button and swallow Enter.
+      if (dialog.contains(document.activeElement)) document.activeElement.blur();
     });
   }
 
@@ -729,13 +732,13 @@ function bindEvents() {
       deleteLetter();
       return;
     }
-    // Enter and Space keep their normal meaning on menus and word buttons.
+    // With a word in progress, Enter always submits it. Otherwise Enter and
+    // Space keep their normal meaning on menus and word buttons.
     const inPuzzle = target === document.body || Boolean(target.closest?.('.play'));
-    if (!inPuzzle) return;
-    if (event.key === 'Enter') {
+    if (event.key === 'Enter' && (inPuzzle || entry)) {
       event.preventDefault();
       submit();
-    } else if (event.key === ' ') {
+    } else if (event.key === ' ' && inPuzzle) {
       event.preventDefault();
       shuffleLetters();
     }
