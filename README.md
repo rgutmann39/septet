@@ -30,7 +30,8 @@ module scripts and `fetch` on `file://`.
 |---|---|
 | Seven letters, centre letter required | Tap the letters or type. Enter submits, Backspace deletes, Space shuffles. |
 | Scoring | 4 letters = 1 point, longer = 1 point per letter, a word using all seven letters (a *septet*) = +7. |
-| Ranks | Ten ranks from Tuning Up to Maestro, each a share of the day's points. Tap the rank to see the thresholds, how many points the next rank needs, and copy your result. |
+| Ranks | Ten ranks from Tuning Up to Maestro, each a share of the day's points. Maestro takes 70%: hard, but within reach without every word. Finding every word is a bonus beyond it. Tap the rank to see the thresholds, how many points the next rank needs, and copy your result. |
+| Celebrations | Each new rank gets a show that builds on the one before: floating notes, letters pulsing in rhythm, sound waves, a rising chord, a spotlight, the rank in marquee lights, an equalizer, and at Maestro a conductor's flourish, fireworks of notes and a gold title. The rank and meter stay gold at Maestro. Reduced-motion settings get a still version. Drawn by `js/fx.js`. |
 | Found words | Alphabetical list. Tap a word to open its card. |
 | Word card | A play button that speaks the word, its meaning, a sample sentence and a picture. A word with several common meanings shows each on its own tab, most common first. |
 | Hints | Word, point and septet counts, a first-letter by length grid, and two-letter starts. Can show totals or only what is left. |
@@ -59,6 +60,7 @@ site/index.html + css/ + js/     the game; loads the data files with fetch()
    js/core.js      rules: scoring, validation, ranks, hints, schedule
    js/lookup.js    definitions and pictures for the word card
    js/audio.js     pronunciation for the word card
+   js/fx.js        rank-up celebrations
    js/app.js       the page
 ```
 
