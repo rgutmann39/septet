@@ -30,14 +30,16 @@ module scripts and `fetch` on `file://`.
 |---|---|
 | Seven letters, centre letter required | Tap the letters or type. Enter submits, Backspace deletes, Space shuffles. |
 | Scoring | 4 letters = 1 point, longer = 1 point per letter, a word using all seven letters (a *septet*) = +7. |
-| Ranks | Ten ranks from Tuning Up to Maestro, each a share of the day's points. Tap the rank to see the thresholds and copy your result. |
+| Ranks | Ten ranks from Tuning Up to Maestro, each a share of the day's points. Tap the rank to see the thresholds, how many points the next rank needs, and copy your result. |
 | Found words | Alphabetical list. Tap a word to open its card. |
 | Word card | A play button that speaks the word, its meaning, a sample sentence and a picture. A word with several common meanings shows each on its own tab, most common first. |
 | Hints | Word, point and septet counts, a first-letter by length grid, and two-letter starts. Can show totals or only what is left. |
 | Answers | Reveals every word in the puzzle you are playing, after a confirm step, marked with the ones you found. You can keep playing; the day is flagged as revealed in Past puzzles and in the copied result. |
 | Yesterday | Every answer from the previous puzzle, marked with the ones you found. Also tappable. |
 | Stats | Days played, words, septets, points, streaks, and days finished at each rank. |
-| Past puzzles | Replay any of the last 60 days; each day keeps its own progress. |
+| New puzzle | An extra puzzle on demand, drawn from a pool of about 1,300 that meet the same rules as the daily ones and never repeat a daily puzzle. |
+| Puzzle links | An extra puzzle's address is `?p=<letters>`, centre letter first (`?p=uegilnr`). The letters alone rebuild the puzzle, so anyone who opens the link gets the same one. *Copy link* under the title copies it, and *Copy my result* includes it. |
+| Past puzzles | Replay any of the last 60 days; each day keeps its own progress. Extra puzzles are listed too, most recently played first, once you have found a word in them. Each is deleted 14 days after the last word found in it. Extra puzzles do not count in Stats. |
 | Daily puzzle | Changes at local midnight. Everyone gets the same puzzle on the same date. |
 | Saved progress | In the browser's `localStorage`. Nothing leaves the device. |
 | Light and dark | Follows the system setting; the toggle overrides it. |
@@ -50,6 +52,7 @@ tools/build_data.py      ──►  site/data/words.txt        accepted dictiona
    (run by hand,               site/data/puzzles.json     schedule: 577 puzzles, ~1.6 years
     output committed)          site/data/defs/a..z.json   meanings and sample sentences per word
                                site/data/meta.json        build summary
+tools/build_pool.py      ──►  site/data/pool.txt         puzzles for "New puzzle" (1,296)
 tools/build_pictures.mjs ──►  site/data/pics/a..z.json   optional picture index (not included)
 
 site/index.html + css/ + js/     the game; loads the data files with fetch()
@@ -103,6 +106,27 @@ Puzzles are chosen so their answers match the reference:
   is a reasonably common word. Each set of seven letters appears once.
 - Dates already published (before 1 December 2026) keep their puzzle, so a
   rebuild does not wipe saved progress.
+
+Every other letter set that passes the size, points and fair-septet tests
+goes in `site/data/pool.txt`, written by `tools/build_pool.py`, for the *New
+puzzle* button. It needs only `words.txt`, `puzzles.json` and wordfreq, and it
+also skips the reference's letter sets when `tools/reference/` is present. It
+does not apply the "expected mismatches" limit, which needs the model inside
+`build_data.py`. A test fails if the pool overlaps the schedule or has a
+puzzle that no longer fits, which means it needs rebuilding.
+
+### Saved progress
+
+Everything lives under one `localStorage` key, `septet.v1`:
+
+- `days["YYYY-MM-DD"]`: the daily puzzle for that date: letters (`l`), words
+  found (`w`), score (`s`), total (`t`), rank (`r`), septets (`p`), and `v`
+  if the answers were revealed.
+- `extra["<letters>"]`: an extra puzzle, with the same fields apart from `l`
+  (the key is the letters), plus `c`, when it was first saved, and `u`, when
+  a word was last found (ISO timestamps). It is saved only once it has a word,
+  and entries whose `u` is more than 14 days old are deleted when the page
+  loads or Past puzzles opens.
 
 To change the dictionary by hand, edit the curation files and rebuild.
 
@@ -210,6 +234,7 @@ python3 -m venv .venv && . .venv/bin/activate
 pip install -r tools/requirements.txt  # wordfreq, nltk, scikit-learn
 python tools/fetch_reference.py       # reference verdicts (local, see below)
 python tools/build_data.py            # dictionary, puzzles, definitions
+python tools/build_pool.py            # puzzles for "New puzzle"
 npm test                              # checks the new files
 
 # optional: picture index (see "Pictures" above)

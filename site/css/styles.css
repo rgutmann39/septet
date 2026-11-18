@@ -455,6 +455,15 @@ kbd {
   font-weight: 700;
 }
 
+.ranks-next {
+  margin: 0 0 14px;
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+.ranks-next strong { color: var(--accent); }
+
 /* hints */
 .switch { display: inline-flex; align-items: center; gap: 8px; font-size: 0.92rem; }
 .switch input { width: 18px; height: 18px; accent-color: var(--accent); }
@@ -515,6 +524,12 @@ kbd {
 }
 .archive-date { font-weight: 600; }
 .archive-status { color: var(--ink-soft); font-size: 0.88rem; }
+.archive-list li.current .archive-date { color: var(--accent); }
+.extra-key { letter-spacing: 0.12em; text-transform: uppercase; }
+.extra-key b { color: var(--accent); }
+.section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 8px; }
+.section-head h3 { margin: 0; }
+#extra-note { margin: 10px 0 0; }
 
 /* ----------------------------------------------------------- word card -- */
 

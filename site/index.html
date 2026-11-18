@@ -30,13 +30,14 @@
         </g>
       </svg>
       <h1>Septet</h1>
-      <p class="dateline"><span id="puzzle-date"></span> <button type="button" class="link-button" id="back-to-today" hidden>Back to today</button></p>
+      <p class="dateline"><span id="puzzle-date"></span> <button type="button" class="link-button" id="back-to-today" hidden>Back to today</button> <button type="button" class="link-button" id="copy-link" hidden>Copy link</button></p>
     </div>
     <nav class="toolbar" aria-label="Game menu">
       <button type="button" data-open="hints">Hints</button>
       <button type="button" data-open="answers">Answers</button>
       <button type="button" data-open="yesterday">Yesterday</button>
       <button type="button" data-open="stats">Stats</button>
+      <button type="button" id="btn-new">New puzzle</button>
       <button type="button" data-open="archive">Past puzzles</button>
       <button type="button" data-open="help">How to play</button>
       <button type="button" id="theme-toggle" class="icon-button" aria-label="Switch between light and dark">
@@ -124,6 +125,8 @@
       <p>Your points move you up through the ranks, from Tuning Up to Maestro. Tap your rank to see what each one takes.</p>
       <h3>Playing</h3>
       <p>Tap the letters or type. <kbd>Enter</kbd> submits, <kbd>Backspace</kbd> deletes, <kbd>Space</kbd> shuffles. A new puzzle arrives every day at midnight, and your progress is saved on this device.</p>
+      <h3>More puzzles</h3>
+      <p><strong>New puzzle</strong> gives you an extra one whenever you like. Extra puzzles you have found a word in are listed under <strong>Past puzzles</strong> for two weeks after you last play them. <strong>Copy link</strong> under the title gives a link to the puzzle you are playing: anyone who opens it gets the same letters.</p>
       <h3>Stuck?</h3>
       <p>Open <strong>Answers</strong> to reveal every word in the puzzle you are playing. It asks first, so you cannot spoil it by accident. You can keep playing afterwards, and the day is marked as revealed.</p>
       <h3>Meanings and pictures</h3>
@@ -136,6 +139,7 @@
     <form method="dialog" class="dialog-head"><h2 id="ranks-title">Ranks</h2><button class="dialog-close" aria-label="Close">&times;</button></form>
     <div class="dialog-body">
       <p class="lede" id="ranks-lede"></p>
+      <p class="ranks-next" id="ranks-next"></p>
       <ol class="rank-table" id="rank-table"></ol>
       <div class="dialog-actions"><button type="button" class="pill solid" id="btn-share">Copy my result</button><span class="share-note" id="share-note" role="status"></span></div>
     </div>
@@ -191,6 +195,11 @@
   <dialog id="dlg-archive" aria-labelledby="archive-title">
     <form method="dialog" class="dialog-head"><h2 id="archive-title">Past puzzles</h2><button class="dialog-close" aria-label="Close">&times;</button></form>
     <div class="dialog-body">
+      <div class="section-head"><h3>Extra puzzles</h3><button type="button" class="pill small solid" id="btn-new-archive">New puzzle</button></div>
+      <p class="lede" id="extra-empty">Start one with <strong>New puzzle</strong>. It is kept here once you find a word in it.</p>
+      <ul class="archive-list" id="extra-list"></ul>
+      <p class="fine-print" id="extra-note"></p>
+      <h3>Daily puzzles</h3>
       <p class="lede">Catch up on a day you missed. Progress on each puzzle is saved separately.</p>
       <ul class="archive-list" id="archive-list"></ul>
     </div>
