@@ -61,6 +61,22 @@ test('schedule: every puzzle has a septet and a sensible number of words', () =>
   }
 });
 
+test('pool: fair puzzles for "New puzzle", none of them a daily one', () => {
+  const pool = readFileSync(new URL('pool.txt', data), 'utf8').split('\n').filter(Boolean);
+  assert.ok(pool.length >= 500, `only ${pool.length} puzzles in the pool`);
+  const sets = (list) => list.map((letters) => [...letters].sort().join(''));
+  assert.equal(new Set(sets(pool)).size, pool.length, 'a letter set appears twice');
+  const daily = new Set(sets(schedule.puzzles));
+  for (const set of sets(pool)) assert.ok(!daily.has(set), `${set} is also a daily puzzle (rerun tools/build_pool.py)`);
+  for (const letters of pool) {
+    assert.match(letters, /^[a-rt-z]{7}$/, letters);
+    const puzzle = createPuzzle(letters, words);
+    assert.ok(puzzle.septets.length >= 1, `${letters} has no septet (rerun tools/build_pool.py)`);
+    assert.ok(puzzle.answers.length >= 20 && puzzle.answers.length <= 65, `${letters} has ${puzzle.answers.length} words`);
+    assert.ok(puzzle.total >= 70 && puzzle.total <= 330, `${letters} has ${puzzle.total} points`);
+  }
+});
+
 // The reference list is built locally by tools/fetch_reference.py and never
 // committed, so these two checks only run where it exists.
 const reference = new URL('reference/verdicts.tsv', tools);

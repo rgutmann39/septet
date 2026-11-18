@@ -183,3 +183,50 @@ export function shuffled(items, random = Math.random) {
   }
   return out;
 }
+
+// ------------------------------------------------------- extra puzzles ----
+// Puzzles made on demand, outside the daily schedule. A puzzle's key is its
+// letters, centre letter first ("uegilnr"): the key alone rebuilds the whole
+// puzzle, so it can travel in a link.
+
+/** Days an extra puzzle is kept after the last word found in it. */
+export const EXTRA_KEEP_DAYS = 14;
+
+/** The letters for a puzzle key, or null if it cannot be a puzzle. */
+export function parsePuzzleKey(value) {
+  if (typeof value !== 'string') return null;
+  const key = value.trim().toLowerCase();
+  if (!/^[a-rt-z]{7}$/.test(key) || new Set(key).size !== LETTER_COUNT) return null;
+  return key;
+}
+
+/** Whether a puzzle built from a key is playable: it needs a septet. */
+export function isPlayable(puzzle) {
+  return puzzle.septets.length > 0;
+}
+
+/**
+ * Pick a puzzle key from the pool, skipping any in `exclude` (keys already
+ * played or open). Falls back to the whole pool once everything is excluded.
+ */
+export function pickFromPool(pool, exclude = new Set(), random = Math.random) {
+  const fresh = pool.filter((key) => !exclude.has(key));
+  const from = fresh.length ? fresh : pool;
+  return from.length ? from[Math.floor(random() * from.length)] : null;
+}
+
+/**
+ * The saved extra puzzles worth keeping: at least one word found, and a word
+ * found within the last EXTRA_KEEP_DAYS days. `now` is a Date or ms.
+ */
+export function pruneExtras(extras, now = Date.now(), keepDays = EXTRA_KEEP_DAYS) {
+  const cutoff = Number(now) - keepDays * 86400000;
+  const kept = {};
+  for (const [key, entry] of Object.entries(extras ?? {})) {
+    if (!parsePuzzleKey(key) || !Array.isArray(entry?.w) || !entry.w.length) continue;
+    const updated = Date.parse(entry.u);
+    if (Number.isNaN(updated) || updated < cutoff) continue;
+    kept[key] = entry;
+  }
+  return kept;
+}

@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  RANKS, checkGuess, createPuzzle, dateKey, daysBetween, hintTables, isDateKey, isSeptet,
-  puzzleIndexFor, rankIndex, rankTable, scoreOf, shiftDateKey, shuffled, wordPoints,
+  EXTRA_KEEP_DAYS, RANKS, checkGuess, createPuzzle, dateKey, daysBetween, hintTables, isDateKey,
+  isPlayable, isSeptet, parsePuzzleKey, pickFromPool, pruneExtras, puzzleIndexFor, rankIndex,
+  rankTable, scoreOf, shiftDateKey, shuffled, wordPoints,
 } from '../site/js/core.js';
 
 const WORDS = [
@@ -105,4 +106,48 @@ test('shuffled keeps the same items', () => {
   const out = shuffled(letters, () => 0.3);
   assert.deepEqual([...out].sort(), letters);
   assert.notEqual(out, letters);
+});
+
+test('parsePuzzleKey accepts seven distinct letters without S, centre first', () => {
+  assert.equal(parsePuzzleKey('uegilnr'), 'uegilnr');
+  assert.equal(parsePuzzleKey(' UEGILNR '), 'uegilnr');
+  for (const bad of [null, undefined, '', 'uegiln', 'uegilnrt', 'uegilns', 'uegilnn', 'uegil1r', 42]) {
+    assert.equal(parsePuzzleKey(bad), null, String(bad));
+  }
+});
+
+test('a puzzle key rebuilds the same puzzle, centre letter included', () => {
+  const words = ['glue', 'lunge', 'gruel', 'ruling', 'reguline', 'linger', 'lingerie'];
+  const a = createPuzzle(parsePuzzleKey('uegilnr'), words);
+  const b = createPuzzle(parsePuzzleKey('uegilnr'), words);
+  assert.deepEqual(a.answers, b.answers);
+  assert.equal(a.center, 'u');
+  assert.ok(!a.answers.includes('linger'), 'needs the centre letter');
+  assert.ok(isPlayable(a));
+  assert.ok(!isPlayable(createPuzzle('uegilnr', ['glue'])));
+});
+
+test('pickFromPool skips excluded keys until none are left', () => {
+  const pool = ['abcdefg', 'hijklmn', 'opqrtuv'];
+  const exclude = new Set(['abcdefg', 'hijklmn']);
+  for (let i = 0; i < 20; i++) assert.equal(pickFromPool(pool, exclude), 'opqrtuv');
+  assert.ok(pool.includes(pickFromPool(pool, new Set(pool))));
+  assert.equal(pickFromPool([], new Set()), null);
+  assert.equal(pickFromPool(pool, new Set(), () => 0.99), 'opqrtuv');
+});
+
+test('pruneExtras keeps puzzles with a word found in the last 14 days', () => {
+  const now = Date.parse('2026-11-18T12:00:00Z');
+  const daysAgo = (n) => new Date(now - n * 86400000).toISOString();
+  const kept = pruneExtras({
+    abcdefg: { w: ['face'], u: daysAgo(0), c: daysAgo(3) },
+    hijklmn: { w: ['milk'], u: daysAgo(13.9) },
+    opqrtuv: { w: ['pour'], u: daysAgo(14.1) },
+    bcdefgh: { w: [], u: daysAgo(0) },
+    cdefghi: { w: ['chef'] },
+    sabcdef: { w: ['word'], u: daysAgo(0) },
+  }, now);
+  assert.deepEqual(Object.keys(kept).sort(), ['abcdefg', 'hijklmn']);
+  assert.equal(EXTRA_KEEP_DAYS, 14);
+  assert.deepEqual(pruneExtras(undefined, now), {});
 });

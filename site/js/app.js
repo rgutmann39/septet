@@ -1,8 +1,9 @@
 // Septet: the page. Rules live in core.js; word lookups in lookup.js.
 
 import {
-  RANKS, checkGuess, createPuzzle, dateKey, daysBetween, hintTables, isDateKey, isSeptet,
-  puzzleIndexFor, rankIndex, rankTable, scoreOf, shiftDateKey, shuffled,
+  EXTRA_KEEP_DAYS, RANKS, checkGuess, createPuzzle, dateKey, daysBetween, hintTables, isDateKey,
+  isPlayable, isSeptet, parsePuzzleKey, pickFromPool, pruneExtras, puzzleIndexFor, rankIndex,
+  rankTable, scoreOf, shiftDateKey, shuffled,
 } from './core.js';
 import { pronounce, stopPronouncing } from './audio.js';
 import { lookupDefinition, lookupPicture } from './lookup.js';
@@ -35,7 +36,9 @@ let dictionary = [];
 let schedule = { epoch: dateKey(), puzzles: [] };
 let store = loadStore();
 let today = dateKey();
-let viewDate = today;
+let viewDate = today; // date of the daily puzzle on screen, or null for an extra puzzle
+let viewKey = null; // letters of the extra puzzle on screen (centre first), or null
+let pool = null; // puzzle keys for "New puzzle", loaded on first use
 let puzzle = null;
 let found = [];
 let revealed = false;
@@ -46,9 +49,11 @@ let locked = false;
 function loadStore() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORE_KEY));
-    if (saved && typeof saved === 'object') return { ...saved, days: saved.days ?? {} };
+    if (saved && typeof saved === 'object') {
+      return { ...saved, days: saved.days ?? {}, extra: pruneExtras(saved.extra) };
+    }
   } catch { /* private mode or corrupt data: start fresh */ }
-  return { days: {} };
+  return { days: {}, extra: {} };
 }
 
 function saveStore() {
@@ -74,10 +79,15 @@ function isRevealed(date, forPuzzle) {
   return Boolean(day?.v && day.l === forPuzzle.letters);
 }
 
-function persist() {
+/**
+ * Save progress on the puzzle on screen. A daily puzzle is saved under its
+ * date. An extra puzzle is saved under its letters, and only once it has a
+ * word: `c` is when it was first saved, `u` when a word was last found (it
+ * is deleted EXTRA_KEEP_DAYS after that).
+ */
+function persist(wordAdded = false) {
   const score = scoreOf(found);
-  store.days[viewDate] = {
-    l: puzzle.letters,
+  const record = {
     w: found,
     s: score,
     t: puzzle.total,
@@ -85,7 +95,24 @@ function persist() {
     p: found.filter(isSeptet).length,
     ...(revealed && { v: 1 }),
   };
+  if (viewKey) {
+    if (!found.length) return; // nothing worth keeping yet
+    const before = store.extra[viewKey];
+    const now = new Date().toISOString();
+    store.extra[viewKey] = { ...record, c: before?.c ?? now, u: wordAdded || !before?.u ? now : before.u };
+  } else {
+    store.days[viewDate] = { l: puzzle.letters, ...record };
+  }
   saveStore();
+}
+
+/** A link that opens the extra puzzle on screen, for anyone. */
+function puzzleLink(key = viewKey) {
+  const url = new URL(location.href);
+  url.search = '';
+  url.hash = '';
+  url.searchParams.set('p', key);
+  return url.href;
 }
 
 function formatDate(key, options = { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) {
@@ -96,16 +123,68 @@ function formatDate(key, options = { weekday: 'long', month: 'long', day: 'numer
 // ------------------------------------------------------------------- game --
 
 function openDay(date) {
-  closeCard();
+  const next = createPuzzle(lettersFor(date), dictionary);
   viewDate = date;
-  puzzle = createPuzzle(lettersFor(date), dictionary);
-  found = savedWords(date, puzzle);
-  revealed = isRevealed(date, puzzle);
+  viewKey = null;
+  showPuzzle(next, savedWords(date, next), isRevealed(date, next));
+}
+
+/** Open an extra puzzle by its key. Returns false if the key makes no puzzle. */
+function openExtra(key) {
+  const next = createPuzzle(key, dictionary);
+  if (!isPlayable(next)) return false;
+  const saved = store.extra[key];
+  viewDate = null;
+  viewKey = key;
+  showPuzzle(next, saved ? saved.w.filter((word) => next.answerSet.has(word)) : [], Boolean(saved?.v));
+  return true;
+}
+
+/** Start a puzzle the player has not had yet, from the pool. */
+async function newPuzzle() {
+  try {
+    pool ??= (await load('pool.txt', 'text')).split('\n').filter(Boolean);
+  } catch (error) {
+    console.error(error);
+    toast('No new puzzle could be loaded', 'error');
+    return;
+  }
+  const exclude = new Set(Object.keys(store.extra));
+  if (viewKey) exclude.add(viewKey);
+  for (let tries = 0; tries < 20; tries++) {
+    const key = pickFromPool(pool, exclude);
+    if (!key) break;
+    if (openExtra(key)) {
+      toast('Here is a new puzzle');
+      return;
+    }
+    exclude.add(key);
+  }
+  toast('No new puzzle could be made', 'error');
+}
+
+async function copyLink() {
+  const link = puzzleLink();
+  try {
+    await navigator.clipboard.writeText(link);
+    toast('Link copied. Anyone who opens it gets this puzzle.');
+  } catch {
+    window.prompt('Copy this link to share the puzzle:', link);
+  }
+}
+
+function showPuzzle(next, words, wasRevealed) {
+  closeCard();
+  puzzle = next;
+  found = words;
+  revealed = wasRevealed;
   entry = '';
   outer = [...puzzle.outer];
   const url = new URL(location.href);
-  if (date === today) url.searchParams.delete('date');
-  else url.searchParams.set('date', date);
+  url.searchParams.delete('date');
+  url.searchParams.delete('p');
+  if (viewKey) url.searchParams.set('p', viewKey);
+  else if (viewDate !== today) url.searchParams.set('date', viewDate);
   history.replaceState(null, '', url);
   renderDate();
   renderBoard();
@@ -115,8 +194,9 @@ function openDay(date) {
 }
 
 function renderDate() {
-  $('puzzle-date').textContent = formatDate(viewDate);
+  $('puzzle-date').textContent = viewKey ? 'Extra puzzle' : formatDate(viewDate);
   $('back-to-today').hidden = viewDate === today;
+  $('copy-link').hidden = !viewKey;
 }
 
 function renderBoard() {
@@ -203,7 +283,7 @@ function toast(text, tone = 'info') {
   box.dataset.tone = tone;
   box.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => box.classList.remove('show'), 1800);
+  toastTimer = setTimeout(() => box.classList.remove('show'), Math.max(1800, text.length * 55));
 }
 
 function addLetter(letter) {
@@ -254,7 +334,7 @@ function submit() {
 
   const before = rankIndex(scoreOf(found), puzzle.total);
   found.push(result.word);
-  persist();
+  persist(true);
   entry = '';
   renderEntry();
   renderStatus();
@@ -299,6 +379,11 @@ function fillRanks() {
   const table = rankTable(puzzle.total);
   const index = rankIndex(score, puzzle.total);
   $('ranks-lede').textContent = `Each rank is a share of the ${puzzle.total} points in this puzzle. You have ${score}.`;
+  const next = table[index + 1];
+  const nextBox = $('ranks-next');
+  nextBox.replaceChildren(...(next
+    ? [el('strong', { textContent: plural(next.score - score, 'point') }), ` to ${next.name}`]
+    : ['Every word found. Bravo!']));
   const list = $('rank-table');
   list.replaceChildren();
   [...table].reverse().forEach((rank, i) => {
@@ -317,10 +402,13 @@ function shareText() {
   const rank = rankTable(puzzle.total)[rankIndex(score, puzzle.total)].name;
   const septets = found.filter(isSeptet).length;
   return [
-    `Septet · ${formatDate(viewDate, { month: 'short', day: 'numeric', year: 'numeric' })}`,
+    viewKey
+      ? `Septet · Extra puzzle ${viewKey.toUpperCase()}`
+      : `Septet · ${formatDate(viewDate, { month: 'short', day: 'numeric', year: 'numeric' })}`,
     `${rank}: ${score} of ${puzzle.total} points`,
     `${found.length} of ${puzzle.answers.length} words${septets ? `, ${plural(septets, 'septet')}` : ''}`,
     ...(revealed ? ['Answers revealed'] : []),
+    ...(viewKey ? [puzzleLink()] : []),
   ].join('\n');
 }
 
@@ -392,7 +480,9 @@ function fillHints() {
 
 function fillAnswers() {
   const isToday = viewDate === today;
-  $('answers-title').textContent = isToday ? "Today's answers" : `Answers for ${formatDate(viewDate, { month: 'short', day: 'numeric' })}`;
+  $('answers-title').textContent = isToday ? "Today's answers"
+    : viewKey ? 'Answers for this puzzle'
+      : `Answers for ${formatDate(viewDate, { month: 'short', day: 'numeric' })}`;
   $('answers-gate').hidden = revealed;
   $('answers-shown').hidden = !revealed;
   const list = $('answers-list');
@@ -426,8 +516,10 @@ function revealAnswers() {
 }
 
 function fillYesterday() {
-  const date = shiftDateKey(viewDate, -1);
-  $('yesterday-title').textContent = viewDate === today ? "Yesterday's answers" : 'The day before';
+  // An extra puzzle has no date of its own: show the day before today.
+  const base = viewDate ?? today;
+  const date = shiftDateKey(base, -1);
+  $('yesterday-title').textContent = base === today ? "Yesterday's answers" : 'The day before';
   const letters = $('yesterday-letters');
   const list = $('yesterday-list');
   letters.replaceChildren();
@@ -518,6 +610,7 @@ function fillStats() {
 }
 
 function fillArchive() {
+  fillExtras();
   const list = $('archive-list');
   list.replaceChildren();
   const span = Math.min(ARCHIVE_DAYS, daysBetween(schedule.epoch, today) + 1);
@@ -545,6 +638,57 @@ function fillArchive() {
       el('span', { className: 'archive-status', textContent: status }),
       button));
   }
+}
+
+const relativeDays = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+
+/** "today", "yesterday", "3 days ago" for an ISO timestamp. */
+function daysAgo(iso) {
+  return relativeDays.format(-daysBetween(dateKey(new Date(iso)), today), 'day');
+}
+
+function extraLabel(key) {
+  return el('span', { className: 'archive-date extra-key', ariaLabel: `Centre ${key[0]}, then ${key.slice(1)}` },
+    el('b', { textContent: key[0] }), key.slice(1));
+}
+
+/** The extra puzzles in Past puzzles, most recently played first. */
+function fillExtras() {
+  store.extra = pruneExtras(store.extra);
+  saveStore();
+  const list = $('extra-list');
+  list.replaceChildren();
+  const entries = Object.entries(store.extra).sort(([, a], [, b]) => b.u.localeCompare(a.u));
+  if (viewKey && !store.extra[viewKey]) {
+    list.append(el('li', { className: 'current' },
+      extraLabel(viewKey),
+      el('span', { className: 'archive-status', textContent: 'Kept once you find a word' }),
+      el('button', { type: 'button', className: 'pill small', textContent: 'Playing', disabled: true })));
+  }
+  for (const [key, saved] of entries) {
+    const short = { month: 'short', day: 'numeric' };
+    const startedOn = dateKey(new Date(saved.c ?? saved.u));
+    const lastOn = dateKey(new Date(saved.u));
+    const status = el('span', { className: 'archive-status' },
+      `${RANKS[saved.r ?? 0].name} · ${saved.s} of ${saved.t} points${saved.v ? ' · revealed' : ''}`,
+      el('br'),
+      `Last word ${daysAgo(saved.u)}${startedOn === lastOn ? '' : ` · started ${formatDate(startedOn, short)}`}`);
+    list.append(el('li', { className: key === viewKey ? 'current' : '' },
+      extraLabel(key),
+      status,
+      el('button', {
+        type: 'button',
+        className: 'pill small',
+        textContent: key === viewKey ? 'Playing' : 'Resume',
+        disabled: key === viewKey,
+        onclick: () => {
+          $('dlg-archive').close();
+          openExtra(key);
+        },
+      })));
+  }
+  $('extra-empty').hidden = list.children.length > 0;
+  $('extra-note').textContent = `Extra puzzles are kept on this device for ${EXTRA_KEEP_DAYS} days after the last word you find in them.`;
 }
 
 // -------------------------------------------------------------- word card --
@@ -798,6 +942,12 @@ function bindEvents() {
   $('btn-reveal').onclick = revealAnswers;
   $('btn-reveal-cancel').onclick = () => $('dlg-answers').close();
   $('back-to-today').onclick = () => openDay(today);
+  $('copy-link').onclick = copyLink;
+  $('btn-new').onclick = newPuzzle;
+  $('btn-new-archive').onclick = () => {
+    $('dlg-archive').close();
+    newPuzzle();
+  };
 
   $('found-toggle').onclick = () => {
     const open = $('found').classList.toggle('open');
@@ -935,12 +1085,18 @@ async function start() {
     return;
   }
 
+  saveStore(); // writes back the extra puzzles pruned on load
   bindEvents();
-  const requested = new URLSearchParams(location.search).get('date');
+  const params = new URLSearchParams(location.search);
+  const requested = params.get('date');
   const valid = isDateKey(requested)
     && daysBetween(schedule.epoch, requested) >= 0
     && daysBetween(requested, today) >= 0;
-  openDay(valid ? requested : today);
+  // ?p=<letters> opens an extra puzzle: the same puzzle for everyone with the link.
+  const key = parsePuzzleKey(params.get('p'));
+  const opened = key && openExtra(key);
+  if (!opened) openDay(valid ? requested : today);
+  if (params.has('p') && !opened) toast("That puzzle link doesn't work. Here is today's puzzle.", 'error');
   $('game').removeAttribute('data-loading');
 
   if (!store.seenHelp) {
