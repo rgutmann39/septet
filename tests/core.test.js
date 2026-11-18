@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  EXTRA_KEEP_DAYS, RANKS, checkGuess, createPuzzle, dateKey, daysBetween, hintTables, isDateKey,
+  EXTRA_KEEP_DAYS, RANKS, TOP_RANK, checkGuess, createPuzzle, dateKey, daysBetween, hintTables, isDateKey,
   isPlayable, isSeptet, parsePuzzleKey, pickFromPool, pruneExtras, puzzleIndexFor, rankIndex,
   rankTable, scoreOf, shiftDateKey, shuffled, wordPoints,
 } from '../site/js/core.js';
+import { EFFECTS, celebrationPlan } from '../site/js/fx.js';
 
 const WORDS = [
   'atypical', 'capital', 'clap', 'clip', 'pact', 'pita', 'typical', 'typically',
@@ -52,12 +53,13 @@ test('checkGuess accepts answers in any letter case', () => {
   assert.deepEqual(checkGuess(puzzle, [], 'TYPICAL'), { ok: true, word: 'typical', points: 14, septet: true });
 });
 
-test('rank table rises strictly and ends at the full score', () => {
-  for (const total of [20, 56, 100, 187, 260]) {
+test('rank table rises strictly and tops out at 70% of the points', () => {
+  for (const total of [20, 56, 70, 100, 187, 260, 386]) {
     const table = rankTable(total);
     assert.equal(table.length, RANKS.length);
     assert.equal(table[0].score, 0);
-    assert.equal(table.at(-1).score, total);
+    assert.equal(table[TOP_RANK].score, Math.round(total * 0.7));
+    assert.equal(table[TOP_RANK].name, 'Maestro');
     for (let i = 1; i < table.length; i++) assert.ok(table[i].score > table[i - 1].score, `total ${total}`);
   }
 });
@@ -65,10 +67,25 @@ test('rank table rises strictly and ends at the full score', () => {
 test('rankIndex follows the table', () => {
   assert.equal(rankIndex(0, 200), 0);
   assert.equal(rankIndex(4, 200), 1);    // 2%
-  assert.equal(rankIndex(139, 200), 7);  // just short of 70%
-  assert.equal(rankIndex(140, 200), 8);
-  assert.equal(rankIndex(199, 200), 8);
-  assert.equal(rankIndex(200, 200), 9);
+  assert.equal(rankIndex(109, 200), 7);  // just short of 55%
+  assert.equal(rankIndex(110, 200), 8);
+  assert.equal(rankIndex(139, 200), 8);  // just short of 70%
+  assert.equal(rankIndex(140, 200), TOP_RANK);
+  assert.equal(rankIndex(200, 200), TOP_RANK);
+});
+
+test('celebrations build rank by rank and peak at Maestro', () => {
+  assert.deepEqual(celebrationPlan(0).effects, []);
+  assert.equal(EFFECTS.length, TOP_RANK, 'one new effect per rank above the first');
+  for (let i = 1; i <= TOP_RANK; i++) {
+    const plan = celebrationPlan(i);
+    const below = celebrationPlan(i - 1);
+    assert.equal(plan.effects.length, i, `rank ${i}`);
+    assert.ok(below.effects.every((name) => plan.effects.includes(name)), `rank ${i} keeps the effects below it`);
+    assert.ok(plan.notes > below.notes, `rank ${i} floats more notes`);
+    assert.equal(plan.big, i === TOP_RANK);
+  }
+  assert.ok(celebrationPlan(TOP_RANK).effects.includes('finale'));
 });
 
 test('hint tables count totals and what is left', () => {

@@ -1,17 +1,17 @@
 // Septet: the page. Rules live in core.js; word lookups in lookup.js.
 
 import {
-  EXTRA_KEEP_DAYS, RANKS, checkGuess, createPuzzle, dateKey, daysBetween, hintTables, isDateKey,
+  EXTRA_KEEP_DAYS, RANKS, TOP_RANK, checkGuess, createPuzzle, dateKey, daysBetween, hintTables, isDateKey,
   isPlayable, isSeptet, parsePuzzleKey, pickFromPool, pruneExtras, puzzleIndexFor, rankIndex,
   rankTable, scoreOf, shiftDateKey, shuffled,
 } from './core.js';
 import { pronounce, stopPronouncing } from './audio.js';
+import { celebrate, encore } from './fx.js';
 import { lookupDefinition, lookupPicture } from './lookup.js';
 
 const STORE_KEY = 'septet.v1';
 const MAX_ENTRY = 19;
 const ARCHIVE_DAYS = 60;
-const TOP_REGULAR_RANK = RANKS.length - 2; // the last rank before "every word"
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, props = {}, ...children) => {
@@ -77,6 +77,20 @@ function savedWords(date, forPuzzle) {
 function isRevealed(date, forPuzzle) {
   const day = store.days[date];
   return Boolean(day?.v && day.l === forPuzzle.letters);
+}
+
+/**
+ * The rank a saved puzzle reached, worked out again from its score so that
+ * saves made under older rank thresholds read the same as new ones.
+ */
+function savedRank(saved) {
+  return Number.isFinite(saved?.s) && saved.t > 0 ? rankIndex(saved.s, saved.t) : saved?.r ?? 0;
+}
+
+/** What is left beyond the top rank: "12 words left to find them all". */
+function beyondTop() {
+  const left = puzzle.answers.length - found.length;
+  return left ? `${plural(left, 'word')} left to find them all` : 'Every word found. Bravo!';
 }
 
 /**
@@ -239,9 +253,8 @@ function renderStatus() {
   $('score-unit').textContent = score === 1 ? 'point' : 'points';
 
   const next = table[index + 1];
-  $('next-rank').textContent = next
-    ? `${plural(next.score - score, 'point')} to ${next.name}`
-    : 'Every word found. Bravo!';
+  $('next-rank').textContent = next ? `${plural(next.score - score, 'point')} to ${next.name}` : beyondTop();
+  document.querySelector('.status').classList.toggle('maestro', index === TOP_RANK);
 
   const meter = $('meter');
   meter.replaceChildren();
@@ -343,13 +356,27 @@ function submit() {
   const praise = result.septet ? 'Septet!' : result.points >= 7 ? 'Superb!' : result.points >= 5 ? 'Great!' : 'Nice!';
   toast(`${praise} +${result.points}`, result.septet ? 'septet' : 'good');
 
+  // Celebrate a new rank (the highest, if one word climbs several), then
+  // finding every word. The top rank and a full sweep also get a message.
   const after = rankIndex(scoreOf(found), puzzle.total);
-  if (after > before && after >= TOP_REGULAR_RANK) setTimeout(() => cheer(after), 900);
+  const everything = found.length === puzzle.answers.length;
+  let showLength = 0;
+  if (after > before) {
+    showLength = celebrate(after, RANKS[after].name, {
+      rankName: $('rank-name'),
+      meter: $('meter'),
+      board: $('board'),
+    });
+  }
+  if (everything) showLength = Math.max(showLength, encore('Every word!', showLength));
+  if (after === TOP_RANK && (after > before || everything)) {
+    const shown = puzzle;
+    setTimeout(() => shown === puzzle && cheer(everything), showLength + 300);
+  }
 }
 
-function cheer(index) {
-  const everything = index === RANKS.length - 1;
-  $('cheer-title').textContent = `${RANKS[index].name}!`;
+function cheer(everything) {
+  $('cheer-title').textContent = everything ? 'Every word!' : `${RANKS[TOP_RANK].name}!`;
   $('cheer-text').textContent = everything
     ? `You found all ${puzzle.answers.length} words. Take a bow.`
     : `${scoreOf(found)} points puts you at the top rank. ${plural(puzzle.answers.length - found.length, 'word')} remain if you want every last one.`;
@@ -378,14 +405,19 @@ function fillRanks() {
   const score = scoreOf(found);
   const table = rankTable(puzzle.total);
   const index = rankIndex(score, puzzle.total);
-  $('ranks-lede').textContent = `Each rank is a share of the ${puzzle.total} points in this puzzle. You have ${score}.`;
+  $('ranks-lede').textContent = `Each rank is a share of the ${puzzle.total} points in this puzzle, `
+    + `and ${RANKS[TOP_RANK].name} takes ${table[TOP_RANK].score} of them. You have ${score}.`;
   const next = table[index + 1];
   const nextBox = $('ranks-next');
   nextBox.replaceChildren(...(next
     ? [el('strong', { textContent: plural(next.score - score, 'point') }), ` to ${next.name}`]
-    : ['Every word found. Bravo!']));
+    : [beyondTop()]));
   const list = $('rank-table');
   list.replaceChildren();
+  const everything = found.length === puzzle.answers.length;
+  list.append(el('li', { className: `bonus ${everything ? 'done' : ''}`.trim() },
+    el('span', { className: 'rank-row-name', textContent: `Every word (${puzzle.answers.length})` }),
+    el('span', { className: 'rank-row-score', textContent: puzzle.total })));
   [...table].reverse().forEach((rank, i) => {
     const position = table.length - 1 - i;
     const item = el('li', { className: position === index ? 'current' : position < index ? 'done' : '' },
@@ -553,7 +585,7 @@ function playedDays() {
         words: day.w.length,
         score,
         total,
-        rank: day.r ?? rankIndex(score, total),
+        rank: savedRank({ ...day, s: score, t: total }),
         septets: day.p ?? day.w.filter(isSeptet).length,
       };
     })
@@ -620,7 +652,7 @@ function fillArchive() {
     const played = day?.w?.length && day.l === lettersFor(date);
     const current = day?.l === lettersFor(date);
     const status = played
-      ? `${RANKS[day.r ?? 0].name} · ${day.s} of ${day.t} points${day.v ? ' · revealed' : ''}`
+      ? `${RANKS[savedRank(day)].name} · ${day.s} of ${day.t} points${day.v ? ' · revealed' : ''}`
       : current && day.v ? 'Answers revealed' : 'Not played yet';
     const label = back === 0 ? 'Today' : formatDate(date, { weekday: 'short', month: 'short', day: 'numeric' });
     const button = el('button', {
@@ -670,7 +702,7 @@ function fillExtras() {
     const startedOn = dateKey(new Date(saved.c ?? saved.u));
     const lastOn = dateKey(new Date(saved.u));
     const status = el('span', { className: 'archive-status' },
-      `${RANKS[saved.r ?? 0].name} · ${saved.s} of ${saved.t} points${saved.v ? ' · revealed' : ''}`,
+      `${RANKS[savedRank(saved)].name} · ${saved.s} of ${saved.t} points${saved.v ? ' · revealed' : ''}`,
       el('br'),
       `Last word ${daysAgo(saved.u)}${startedOn === lastOn ? '' : ` · started ${formatDate(startedOn, short)}`}`);
     list.append(el('li', { className: key === viewKey ? 'current' : '' },

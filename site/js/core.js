@@ -4,7 +4,9 @@
 export const MIN_LENGTH = 4;
 export const LETTER_COUNT = 7;
 
-// Ranks, as a share of the day's total points. The last one needs every word.
+// Ranks, as a share of the day's total points. The top rank, Maestro, is set
+// to be hard but within reach (about the same share as the genre's usual
+// "genius" rank), not a full sweep: finding every word is a bonus beyond it.
 export const RANKS = [
   { name: 'Tuning Up', share: 0 },
   { name: 'Warm-Up', share: 0.02 },
@@ -12,11 +14,13 @@ export const RANKS = [
   { name: 'In Rhythm', share: 0.08 },
   { name: 'In Tune', share: 0.15 },
   { name: 'Harmonizing', share: 0.25 },
-  { name: 'Soloist', share: 0.4 },
-  { name: 'Headliner', share: 0.5 },
-  { name: 'Virtuoso', share: 0.7 },
-  { name: 'Maestro', share: 1 },
+  { name: 'Soloist', share: 0.33 },
+  { name: 'Headliner', share: 0.42 },
+  { name: 'Virtuoso', share: 0.55 },
+  { name: 'Maestro', share: 0.7 },
 ];
+
+export const TOP_RANK = RANKS.length - 1;
 
 /** Bitmask of the distinct letters in a word (bit 0 = a). */
 export function letterMask(word) {
@@ -87,7 +91,7 @@ export function scoreOf(words) {
 export function rankTable(total) {
   let previous = -1;
   return RANKS.map((rank, i) => {
-    let score = i === RANKS.length - 1 ? total : Math.round(total * rank.share);
+    let score = Math.round(total * rank.share);
     // Small puzzles can round two ranks to the same score; keep them distinct.
     if (score <= previous) score = Math.min(previous + 1, total);
     previous = score;
