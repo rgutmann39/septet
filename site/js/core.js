@@ -6,7 +6,7 @@ export const LETTER_COUNT = 7;
 
 // Ranks, as a share of the day's total points. The top rank, Maestro, is set
 // to be hard but within reach (about the same share as the genre's usual
-// "genius" rank), not a full sweep: finding every word is a bonus beyond it.
+// "genius" rank), not a full sweep. There is no rank beyond it.
 export const RANKS = [
   { name: 'Tuning Up', share: 0 },
   { name: 'Warm-Up', share: 0.02 },

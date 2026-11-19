@@ -6,7 +6,7 @@ import {
   rankTable, scoreOf, shiftDateKey, shuffled,
 } from './core.js';
 import { pronounce, stopPronouncing } from './audio.js';
-import { celebrate, encore } from './fx.js';
+import { celebrate } from './fx.js';
 import { lookupDefinition, lookupPicture } from './lookup.js';
 
 const STORE_KEY = 'septet.v1';
@@ -87,11 +87,8 @@ function savedRank(saved) {
   return Number.isFinite(saved?.s) && saved.t > 0 ? rankIndex(saved.s, saved.t) : saved?.r ?? 0;
 }
 
-/** What is left beyond the top rank: "12 words left to find them all". */
-function beyondTop() {
-  const left = puzzle.answers.length - found.length;
-  return left ? `${plural(left, 'word')} left to find them all` : 'Every word found. Bravo!';
-}
+/** What the status line says once the top rank is reached. */
+const TOP_NOTE = 'Top rank reached';
 
 /**
  * Save progress on the puzzle on screen. A daily puzzle is saved under its
@@ -253,7 +250,7 @@ function renderStatus() {
   $('score-unit').textContent = score === 1 ? 'point' : 'points';
 
   const next = table[index + 1];
-  $('next-rank').textContent = next ? `${plural(next.score - score, 'point')} to ${next.name}` : beyondTop();
+  $('next-rank').textContent = next ? `${plural(next.score - score, 'point')} to ${next.name}` : TOP_NOTE;
   document.querySelector('.status').classList.toggle('maestro', index === TOP_RANK);
 
   const meter = $('meter');
@@ -356,10 +353,9 @@ function submit() {
   const praise = result.septet ? 'Septet!' : result.points >= 7 ? 'Superb!' : result.points >= 5 ? 'Great!' : 'Nice!';
   toast(`${praise} +${result.points}`, result.septet ? 'septet' : 'good');
 
-  // Celebrate a new rank (the highest, if one word climbs several), then
-  // finding every word. The top rank and a full sweep also get a message.
+  // Celebrate a new rank (the highest, if one word climbs several). Reaching
+  // the top rank also gets a message; there is nothing beyond it.
   const after = rankIndex(scoreOf(found), puzzle.total);
-  const everything = found.length === puzzle.answers.length;
   let showLength = 0;
   if (after > before) {
     showLength = celebrate(after, RANKS[after].name, {
@@ -368,18 +364,15 @@ function submit() {
       board: $('board'),
     });
   }
-  if (everything) showLength = Math.max(showLength, encore('Every word!', showLength));
-  if (after === TOP_RANK && (after > before || everything)) {
+  if (after === TOP_RANK && after > before) {
     const shown = puzzle;
-    setTimeout(() => shown === puzzle && cheer(everything), showLength + 300);
+    setTimeout(() => shown === puzzle && cheer(), showLength + 300);
   }
 }
 
-function cheer(everything) {
-  $('cheer-title').textContent = everything ? 'Every word!' : `${RANKS[TOP_RANK].name}!`;
-  $('cheer-text').textContent = everything
-    ? `You found all ${puzzle.answers.length} words. Take a bow.`
-    : `${scoreOf(found)} points puts you at the top rank. ${plural(puzzle.answers.length - found.length, 'word')} remain if you want every last one.`;
+function cheer() {
+  $('cheer-title').textContent = `${RANKS[TOP_RANK].name}!`;
+  $('cheer-text').textContent = `${scoreOf(found)} points puts you at the top rank. Take a bow.`;
   showDialog('cheer');
 }
 
@@ -411,13 +404,9 @@ function fillRanks() {
   const nextBox = $('ranks-next');
   nextBox.replaceChildren(...(next
     ? [el('strong', { textContent: plural(next.score - score, 'point') }), ` to ${next.name}`]
-    : [beyondTop()]));
+    : [TOP_NOTE]));
   const list = $('rank-table');
   list.replaceChildren();
-  const everything = found.length === puzzle.answers.length;
-  list.append(el('li', { className: `bonus ${everything ? 'done' : ''}`.trim() },
-    el('span', { className: 'rank-row-name', textContent: `Every word (${puzzle.answers.length})` }),
-    el('span', { className: 'rank-row-score', textContent: puzzle.total })));
   [...table].reverse().forEach((rank, i) => {
     const position = table.length - 1 - i;
     const item = el('li', { className: position === index ? 'current' : position < index ? 'done' : '' },
