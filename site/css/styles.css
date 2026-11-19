@@ -14,13 +14,14 @@
   --shadow: 0 18px 50px rgba(29, 32, 48, 0.18);
   --font-display: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
   --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --gold-deep: #8a5d0b;
-  --gold-light: #d9a21b;
-  /* celebration colours: mid-tones that read on light and dark */
+  /* the top rank's shimmer: deep indigo through periwinkle */
+  --top-deep: #3730a3;
+  --top-light: #8b9cf6;
+  /* celebration colours: cool mid-tones from the theme's indigo, read on light and dark */
   --fx-accent: var(--accent);
-  --fx-gold: #e2a414;
-  --fx-coral: #e8615a;
-  --fx-teal: #1d9e96;
+  --fx-violet: #8b5cf6;
+  --fx-blue: #4f6ff0;
+  --fx-sky: #3a9ee4;
   --fx-glow: var(--accent);
   color-scheme: light;
 }
@@ -37,8 +38,8 @@
   --accent-ink: #14132b;
   --accent-soft: #2c2b52;
   --shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
-  --gold-deep: #d9a21b;
-  --gold-light: #ffe08a;
+  --top-deep: #8b84ff;
+  --top-light: #d4dcff;
   color-scheme: dark;
 }
 
@@ -55,8 +56,8 @@
     --accent-ink: #14132b;
     --accent-soft: #2c2b52;
     --shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
-    --gold-deep: #d9a21b;
-    --gold-light: #ffe08a;
+    --top-deep: #8b84ff;
+    --top-light: #d4dcff;
     color-scheme: dark;
   }
 }
@@ -202,16 +203,16 @@ h1 {
 
 .next-rank { margin: 6px 0 0; color: var(--ink-soft); font-size: 0.88rem; }
 
-/* At Maestro the rank and the meter turn gold, and stay that way. */
+/* At Maestro the rank and the meter take on a cool shimmer, and keep it. */
 .status.maestro .rank-name,
 .status.maestro .next-rank b {
-  background: linear-gradient(100deg, var(--gold-deep) 20%, var(--gold-light) 45%, var(--gold-deep) 70%) 0 0 / 200% 100%;
+  background: linear-gradient(100deg, var(--top-deep) 20%, var(--top-light) 45%, var(--top-deep) 70%) 0 0 / 200% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
   animation: shimmer 4s linear infinite;
 }
-.status.maestro .seg i { background: linear-gradient(90deg, var(--gold-deep), var(--gold-light)); }
+.status.maestro .seg i { background: linear-gradient(90deg, var(--top-deep), var(--top-light)); }
 
 /* found words */
 
@@ -470,7 +471,6 @@ kbd {
   font-variant-numeric: tabular-nums;
 }
 .rank-table li.done { color: var(--ink); }
-.rank-table li.bonus { border-bottom-style: dashed; font-style: italic; }
 .rank-table li.current {
   border-bottom-color: transparent;
   border-radius: 10px;
@@ -723,9 +723,9 @@ kbd {
 .fx-layer > * { position: absolute; will-change: transform, opacity; }
 
 .fx-accent { color: var(--fx-accent); }
-.fx-gold { color: var(--fx-gold); }
-.fx-coral { color: var(--fx-coral); }
-.fx-teal { color: var(--fx-teal); }
+.fx-violet { color: var(--fx-violet); }
+.fx-blue { color: var(--fx-blue); }
+.fx-sky { color: var(--fx-sky); }
 
 .fx-note {
   font-family: "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols 2", "DejaVu Sans", var(--font-ui);
@@ -741,60 +741,60 @@ kbd {
   width: 300vmax;
   height: 300vmax;
   background: radial-gradient(circle at center,
-    rgba(255, 244, 214, 0.22) 0, rgba(255, 244, 214, 0.1) var(--r),
-    rgba(8, 8, 20, 0.5) calc(var(--r) + 50px));
+    rgba(200, 212, 255, 0.22) 0, rgba(200, 212, 255, 0.1) var(--r),
+    rgba(10, 10, 32, 0.5) calc(var(--r) + 50px));
 }
 
 .fx-marquee {
   left: 50%;
   top: 32%;
-  border: 7px dotted #ffd76a;
+  border: 7px dotted #a5b4fc;
   border-radius: 16px;
   padding: 12px 30px;
-  background: #2a1b3d;
-  box-shadow: 0 0 0 4px #2a1b3d, 0 0 34px 6px rgba(255, 200, 80, 0.55), var(--shadow);
+  background: #1c1a4a;
+  box-shadow: 0 0 0 4px #1c1a4a, 0 0 34px 6px rgba(129, 140, 248, 0.55), var(--shadow);
   animation: bulbs 0.36s steps(1) infinite;
   white-space: nowrap;
 }
 .fx-marquee span {
-  color: #ffe08a;
+  color: #dfe4ff;
   font: 700 clamp(1.8rem, 8vw, 3.2rem)/1.1 var(--font-display);
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  text-shadow: 0 0 14px rgba(255, 200, 80, 0.8);
+  text-shadow: 0 0 14px rgba(129, 140, 248, 0.85);
 }
 
 .fx-eq { left: 0; right: 0; bottom: 0; display: flex; align-items: flex-end; gap: 4px; height: 26vh; padding: 0 4px; }
 .fx-eq i { flex: 1; height: 100%; border-radius: 4px 4px 0 0; background: currentColor; opacity: 0.7; transform: scaleY(0); transform-origin: bottom; }
 
-.fx-veil { inset: 0; background: radial-gradient(circle at 50% 45%, rgba(255, 215, 110, 0.3), rgba(20, 14, 40, 0.6) 75%); }
+.fx-veil { inset: 0; background: radial-gradient(circle at 50% 45%, rgba(140, 150, 255, 0.28), rgba(14, 14, 44, 0.62) 75%); }
 
 .fx-baton { inset: 0; width: 100%; height: 100%; overflow: visible; }
 .fx-baton path {
   fill: none;
-  stroke: #ffd76a;
+  stroke: #c7d2fe;
   stroke-width: 6px;
   stroke-linecap: round;
   stroke-dasharray: 100;
-  filter: drop-shadow(0 0 8px rgba(255, 200, 80, 0.9));
+  filter: drop-shadow(0 0 8px rgba(129, 140, 248, 0.95));
 }
 
-.fx-flash { width: 160px; height: 160px; border-radius: 50%; background: radial-gradient(circle, rgba(255, 236, 170, 0.95), rgba(255, 200, 80, 0) 70%); }
+.fx-flash { width: 160px; height: 160px; border-radius: 50%; background: radial-gradient(circle, rgba(224, 231, 255, 0.95), rgba(129, 140, 248, 0) 70%); }
 
 .fx-title { left: 50%; top: 40%; display: grid; justify-items: center; gap: 4px; text-align: center; white-space: nowrap; }
 .fx-title-word span,
 .fx-title-static {
   display: inline-block;
-  background: linear-gradient(100deg, #b7791f 10%, #ffd76a 40%, #fff6cf 50%, #ffd76a 60%, #b7791f 90%) 0 0 / 200% 100%;
+  background: linear-gradient(100deg, #6366f1 10%, #a5b4fc 40%, #eef2ff 50%, #a5b4fc 60%, #6366f1 90%) 0 0 / 200% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
   font: 700 clamp(3.2rem, 15vw, 6.5rem)/1 var(--font-display);
-  filter: drop-shadow(0 2px 0 #6b4708) drop-shadow(0 0 18px rgba(255, 200, 80, 0.7));
+  filter: drop-shadow(0 2px 0 #312e81) drop-shadow(0 0 18px rgba(129, 140, 248, 0.75));
   animation: shimmer 2.2s linear infinite;
 }
 .fx-title-sub {
-  color: #fff6cf;
+  color: #eef2ff;
   font-size: clamp(0.9rem, 3.6vw, 1.15rem);
   font-weight: 700;
   letter-spacing: 0.4em;
@@ -815,7 +815,7 @@ kbd {
 @keyframes pulse { 50% { opacity: 0.55; } }
 @keyframes speak { 50% { opacity: 0.25; } }
 @keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
-@keyframes bulbs { 50% { border-color: #fff3c4; } }
+@keyframes bulbs { 50% { border-color: #eef2ff; } }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }

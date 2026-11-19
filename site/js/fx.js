@@ -29,13 +29,15 @@ export function celebrationPlan(index) {
 // ------------------------------------------------------------- the show --
 
 const GLYPHS = ['♪', '♫', '♩', '♬']; // ♪ ♫ ♩ ♬
-const COLORS = ['accent', 'gold', 'coral', 'teal'];
+// Cool tones that sit with the game's indigo theme. 'sky' is the brightest,
+// used as the highlight where the show wants a spark.
+const COLORS = ['accent', 'violet', 'blue', 'sky'];
 const TEXT = '︎'; // ask for the text form, not an emoji
 
 const rand = (min, max) => min + Math.random() * (max - min);
 const pick = (items) => items[Math.floor(Math.random() * items.length)];
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-/** A colour token from the stylesheet (--accent, --fx-gold, ...), resolved for animate(). */
+/** A colour token from the stylesheet (--accent, --fx-sky, ...), resolved for animate(). */
 const token = (name) => getComputedStyle(document.documentElement).getPropertyValue(`--${name}`).trim();
 const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
@@ -194,7 +196,7 @@ function equalizer() {
   play(eq, [{ opacity: 0 }, { opacity: 1, offset: 0.08 }, { opacity: 1, offset: 0.85 }, { opacity: 0 }], { duration: 2500 });
 }
 
-/** A conductor's flourish drawn in gold across the screen. */
+/** A conductor's flourish drawn in light across the screen. */
 function baton() {
   const ns = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(ns, 'svg');
@@ -228,7 +230,7 @@ function firework(x, y, count = 20) {
     const reach = rand(100, 190);
     const dx = Math.cos(angle) * reach;
     const dy = Math.sin(angle) * reach;
-    const note = spawn(`fx-note fx-${i % 3 === 0 ? 'gold' : pick(COLORS)}`, { textContent: pick(GLYPHS) + TEXT });
+    const note = spawn(`fx-note fx-${i % 3 === 0 ? 'sky' : pick(COLORS)}`, { textContent: pick(GLYPHS) + TEXT });
     Object.assign(note.style, { left: `${x}px`, top: `${y}px`, fontSize: `${rand(1, 1.6)}rem` });
     play(note, [
       { opacity: 1, transform: 'translate(-50%, -50%) scale(0.3)' },
@@ -242,7 +244,7 @@ function firework(x, y, count = 20) {
 function shower(count, duration = 3200) {
   for (let i = 0; i < count; i++) {
     const x = rand(0, window.innerWidth);
-    const note = spawn(`fx-note fx-${i % 2 ? 'gold' : pick(COLORS)}`, { textContent: pick(GLYPHS) + TEXT });
+    const note = spawn(`fx-note fx-${i % 2 ? 'violet' : pick(COLORS)}`, { textContent: pick(GLYPHS) + TEXT });
     Object.assign(note.style, { left: `${x}px`, top: '-40px', fontSize: `${rand(1, 2.1)}rem` });
     const fall = window.innerHeight + 80;
     const sway = rand(20, 60);
@@ -331,16 +333,3 @@ export function celebrate(index, name, { rankName, meter, board }) {
   return plan.big ? 3900 : on.has('marquee') ? 2600 : 1600;
 }
 
-/**
- * A curtain call for finding every word: the words go up in lights under a
- * gentle shower of notes. Starts after `delay` ms (to follow a rank-up show)
- * and returns when it ends.
- */
-export function encore(text, delay = 0) {
-  if (typeof document === 'undefined' || reducedMotion()) return delay;
-  setTimeout(() => {
-    marquee(text, 0);
-    shower(30, 2600);
-  }, delay);
-  return delay + 2400;
-}
